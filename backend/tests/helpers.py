@@ -35,10 +35,17 @@ async def login(client: AsyncClient, email: str, password: str) -> str:
 
 
 async def auth_headers(
-    client: AsyncClient, db: AsyncSession, *, admin: bool = False
+    client: AsyncClient, db: AsyncSession, *, admin: bool = False, role: UserRole | None = None
 ) -> dict[str, str]:
-    email = "admin@example.com" if admin else "user@example.com"
-    await create_user(db, email=email, role=UserRole.admin if admin else UserRole.user)
+    if admin:
+        role = UserRole.admin
+    role = role or UserRole.user
+    email = {
+        UserRole.admin: "admin@example.com",
+        UserRole.owner: "owner@example.com",
+        UserRole.user: "user@example.com",
+    }[role]
+    await create_user(db, email=email, role=role)
     token = await login(client, email, "secret123")
     return {"Authorization": f"Bearer {token}"}
 
@@ -49,16 +56,36 @@ async def create_equipment(
     title: str = "Перфоратор Bosch",
     category: str = "Инструмент",
     brand: str = "Bosch",
-    price: str = "500.00",
-    quantity: int = 2,
+    price_per_day: str | None = "500.00",
+    price_per_hour: str | None = None,
+    min_hours: int = 1,
+    min_days: int = 1,
+    max_hours: int = 24,
+    max_days: int = 30,
+    quantity: int = 1,
+    buffer_minutes: int = 30,
+    lead_time_minutes: int = 30,
+    working_hours: dict | None = None,
+    timezone: str = "Europe/Moscow",
+    owner_id: int | None = None,
     specs: dict | None = None,
 ) -> Equipment:
     item = Equipment(
+        owner_id=owner_id,
         title=title,
         category=category,
         brand=brand,
-        price_per_day=Decimal(price),
+        price_per_day=Decimal(price_per_day) if price_per_day is not None else None,
+        price_per_hour=Decimal(price_per_hour) if price_per_hour is not None else None,
+        min_hours=min_hours,
+        min_days=min_days,
+        max_hours=max_hours,
+        max_days=max_days,
         quantity=quantity,
+        buffer_minutes=buffer_minutes,
+        lead_time_minutes=lead_time_minutes,
+        working_hours=working_hours,
+        timezone=timezone,
         specs=specs or {},
     )
     db.add(item)

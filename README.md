@@ -54,6 +54,7 @@ uv run uvicorn app.main:app --reload
 | Роль | Email | Пароль |
 |---|---|---|
 | Администратор | `admin@example.com` | `admin12345` |
+| Арендодатель | `owner@example.com` | `owner12345` |
 | Клиент | `user@example.com` | `user12345` |
 
 ## API
@@ -66,14 +67,23 @@ uv run uvicorn app.main:app --reload
 | GET | `/equipment` | все | каталог: поиск, фильтры, сортировка, пагинация |
 | GET | `/equipment/categories` | все | список категорий для фильтров |
 | GET | `/equipment/{id}` | все | карточка + запись просмотра в `interactions` |
+| GET | `/equipment/{id}/availability` | все | занятые интервалы для календаря |
 | POST | `/equipment` | админ | создание позиции |
-| PATCH | `/equipment/{id}` | админ | редактирование |
-| DELETE | `/equipment/{id}` | админ | мягкое удаление (скрытие из каталога) |
+| PATCH | `/equipment/{id}` | админ / владелец | редактирование |
+| DELETE | `/equipment/{id}` | админ / владелец | мягкое удаление (скрытие из каталога) |
+| POST | `/bookings/preview` | авторизован | расчёт по обоим тарифам и доступность |
+| POST | `/bookings` | авторизован | создание брони |
+| GET | `/bookings/my` | авторизован | мои брони |
+| GET | `/bookings/{id}` | участник / админ | карточка брони |
+| POST | `/bookings/{id}/cancel` | участник / админ | отмена с расчётом штрафа и возврата |
 | GET | `/health` | все | проверка API и БД |
 
 Параметры каталога: `q`, `category`, `brand`, `min_price`, `max_price`,
 `sort` (`newest` / `price_asc` / `price_desc` / `title`), `limit`, `offset`,
 `include_inactive` (только для админа).
+
+Правила бронирования, тарифы, отмены и споры описаны в
+[docs/booking-rules.md](docs/booking-rules.md).
 
 
 ## Структура проекта

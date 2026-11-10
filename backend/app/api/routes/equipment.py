@@ -1,21 +1,23 @@
 import math
+from datetime import datetime
 from decimal import Decimal
 from typing import Literal
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.api.deps import get_current_admin, get_optional_user
+from app.api.deps import get_current_admin, get_current_user, get_optional_user
 from app.db.session import get_db
 from app.models.equipment import Equipment
 from app.models.user import User
+from app.schemas.booking import AvailabilityResponse, BusyInterval
 from app.schemas.equipment import (
     EquipmentCreate,
     EquipmentPage,
     EquipmentRead,
     EquipmentUpdate,
 )
-from app.services import equipment_service
+from app.services import booking_service, equipment_service
 
 router = APIRouter(prefix="/equipment", tags=["equipment"])
 
@@ -77,13 +79,44 @@ async def get_equipment(
     return item
 
 
+@router.get("/{equipment_id}/availability", response_model=AvailabilityResponse)
+async def availability(
+    equipment_id: int,
+    from_at: datetime = Query(alias="from"),
+    to_at: datetime = Query(alias="to"),
+    db: AsyncSession = Depends(get_db),
+) -> AvailabilityResponse:
+    """Занятые интервалы оборудования за период — для календаря бронирования."""
+    item = await equipment_service.get_equipment(db, equipment_id)
+    if item is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Оборудование не найдено")
+    if to_at <= from_at:
+        raise HTTPException(status_code=422, detail="Параметр to должен быть позже from")
+
+    bookings = await booking_service.busy_intervals(db, item.id, from_at, to_at)
+    return AvailabilityResponse(
+        equipment_id=item.id,
+        quantity=item.quantity,
+        timezone=item.timezone,
+        buffer_minutes=item.buffer_minutes,
+        from_at=from_at,
+        to_at=to_at,
+        busy=[
+            BusyInterval(start_at=b.start_at, end_at=b.end_at, quantity=b.quantity)
+            for b in bookings
+        ],
+    )
+
+
 @router.post("", response_model=EquipmentRead, status_code=status.HTTP_201_CREATED)
 async def create_equipment(
     data: EquipmentCreate,
     db: AsyncSession = Depends(get_db),
-    _admin: User = Depends(get_current_admin),
+    admin: User = Depends(get_current_admin),
 ) -> Equipment:
-    item = Equipment(**data.model_dump())
+    payload = data.model_dump()
+    owner_id = payload.pop("owner_id") or admin.id
+    item = Equipment(**payload, owner_id=owner_id)
     db.add(item)
     await db.commit()
     await db.refresh(item)
@@ -95,14 +128,25 @@ async def update_equipment(
     equipment_id: int,
     data: EquipmentUpdate,
     db: AsyncSession = Depends(get_db),
-    _admin: User = Depends(get_current_admin),
+    user: User = Depends(get_current_user),
 ) -> Equipment:
     item = await equipment_service.get_equipment(db, equipment_id, include_inactive=True)
     if item is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Оборудование не найдено")
+    if not user.is_admin and item.owner_id != user.id:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN, detail="Можно редактировать только свои позиции"
+        )
 
-    for field, value in data.model_dump(exclude_unset=True).items():
+    changes = data.model_dump(exclude_unset=True)
+    if not user.is_admin:
+        changes.pop("owner_id", None)
+
+    for field, value in changes.items():
         setattr(item, field, value)
+
+    if item.price_per_hour is None and item.price_per_day is None:
+        raise HTTPException(status_code=422, detail="Нужна хотя бы одна цена")
 
     await db.commit()
     await db.refresh(item)
@@ -113,11 +157,15 @@ async def update_equipment(
 async def delete_equipment(
     equipment_id: int,
     db: AsyncSession = Depends(get_db),
-    _admin: User = Depends(get_current_admin),
+    user: User = Depends(get_current_user),
 ) -> None:
     """Мягкое удаление: позиция скрывается из каталога, история сохраняется."""
     item = await equipment_service.get_equipment(db, equipment_id, include_inactive=True)
     if item is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Оборудование не найдено")
+    if not user.is_admin and item.owner_id != user.id:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN, detail="Можно удалять только свои позиции"
+        )
     item.is_active = False
     await db.commit()

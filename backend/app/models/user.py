@@ -1,7 +1,7 @@
 from datetime import datetime
 from typing import TYPE_CHECKING
 
-from sqlalchemy import Boolean, DateTime, Enum, String, func
+from sqlalchemy import Boolean, DateTime, Enum, Integer, String, func
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.db.base import Base
@@ -25,13 +25,34 @@ class User(Base):
         nullable=False,
     )
     is_active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
+
+    timezone: Mapped[str] = mapped_column(String(64), default="Europe/Moscow", nullable=False)
+    timezone_source: Mapped[str] = mapped_column(String(20), default="fallback", nullable=False)
+
+    # Репутация и ограничения
+    penalties_count: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    cancellations_count: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    incidents_count: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    damage_count: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    disputes_open: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    disputes_total_30d: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    disputes_rejected_30d: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    moderation_mode: Mapped[str] = mapped_column(String(20), default="normal", nullable=False)
+    is_abuser: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), nullable=False
     )
 
-    bookings: Mapped[list["Booking"]] = relationship(back_populates="user")
+    bookings: Mapped[list["Booking"]] = relationship(
+        back_populates="user", foreign_keys="Booking.user_id"
+    )
     interactions: Mapped[list["Interaction"]] = relationship(back_populates="user")
 
     @property
     def is_admin(self) -> bool:
         return self.role == UserRole.admin
+
+    @property
+    def is_owner(self) -> bool:
+        return self.role == UserRole.owner

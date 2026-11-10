@@ -6,8 +6,9 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.api.deps import get_current_user
 from app.core.security import create_access_token, hash_password, verify_password
 from app.db.session import get_db
+from app.models.enums import UserRole
 from app.models.user import User
-from app.schemas.user import Token, UserCreate, UserRead
+from app.schemas.user import Token, UserCreate, UserRead, UserUpdate
 
 router = APIRouter(prefix="/auth", tags=["auth"])
 
@@ -26,6 +27,9 @@ async def register(data: UserCreate, db: AsyncSession = Depends(get_db)) -> User
         email=email,
         hashed_password=hash_password(data.password),
         full_name=data.full_name,
+        role=UserRole(data.role),
+        timezone=data.timezone or "Europe/Moscow",
+        timezone_source="manual" if data.timezone else "fallback",
     )
     db.add(user)
     await db.commit()
@@ -59,4 +63,20 @@ async def login(
 
 @router.get("/me", response_model=UserRead)
 async def me(user: User = Depends(get_current_user)) -> User:
+    return user
+
+
+@router.patch("/me", response_model=UserRead)
+async def update_me(
+    data: UserUpdate,
+    db: AsyncSession = Depends(get_db),
+    user: User = Depends(get_current_user),
+) -> User:
+    changes = data.model_dump(exclude_unset=True)
+    if changes.get("timezone"):
+        user.timezone_source = "manual"
+    for field, value in changes.items():
+        setattr(user, field, value)
+    await db.commit()
+    await db.refresh(user)
     return user
