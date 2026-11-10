@@ -26,13 +26,13 @@ password_hash = PasswordHash.recommended()
 
 DEMO_USERS = [
     {
-        "email": "admin@rental.local",
+        "email": "admin@example.com",
         "password": "admin12345",
         "full_name": "Администратор",
         "role": UserRole.admin,
     },
     {
-        "email": "user@rental.local",
+        "email": "user@example.com",
         "password": "user12345",
         "full_name": "Иван Петров",
         "role": UserRole.user,
@@ -517,8 +517,8 @@ async def seed(reset: bool = False) -> None:
             f"Готово: {len(users)} пользователей, {len(equipment)} единиц оборудования, "
             f"{len(bookings)} броней, {len(interactions)} взаимодействий."
         )
-        print("Админ: admin@rental.local / admin12345")
-        print("Клиент: user@rental.local / user12345")
+        print("Админ: admin@example.com / admin12345")
+        print("Клиент: user@example.com / user12345")
 
 
 def main() -> None:

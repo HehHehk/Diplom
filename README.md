@@ -53,8 +53,28 @@ uv run uvicorn app.main:app --reload
 
 | Роль | Email | Пароль |
 |---|---|---|
-| Администратор | `admin@rental.local` | `admin12345` |
-| Клиент | `user@rental.local` | `user12345` |
+| Администратор | `admin@example.com` | `admin12345` |
+| Клиент | `user@example.com` | `user12345` |
+
+## API
+
+| Метод | Путь | Доступ | Назначение |
+|---|---|---|---|
+| POST | `/auth/register` | все | регистрация |
+| POST | `/auth/login` | все | вход (OAuth2 form, `username` = email) |
+| GET | `/auth/me` | авторизован | текущий пользователь |
+| GET | `/equipment` | все | каталог: поиск, фильтры, сортировка, пагинация |
+| GET | `/equipment/categories` | все | список категорий для фильтров |
+| GET | `/equipment/{id}` | все | карточка + запись просмотра в `interactions` |
+| POST | `/equipment` | админ | создание позиции |
+| PATCH | `/equipment/{id}` | админ | редактирование |
+| DELETE | `/equipment/{id}` | админ | мягкое удаление (скрытие из каталога) |
+| GET | `/health` | все | проверка API и БД |
+
+Параметры каталога: `q`, `category`, `brand`, `min_price`, `max_price`,
+`sort` (`newest` / `price_asc` / `price_desc` / `title`), `limit`, `offset`,
+`include_inactive` (только для админа).
+
 
 ## Структура проекта
 
