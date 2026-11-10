@@ -1,0 +1,45 @@
+name: rental
+
+services:
+  db:
+    image: postgres:17-alpine
+    container_name: rental_db
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-rental}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-rental}
+      POSTGRES_DB: ${POSTGRES_DB:-rental}
+    ports:
+      - "${POSTGRES_PORT:-5432}:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-rental} -d ${POSTGRES_DB:-rental}"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  backend:
+    build:
+      context: ./backend
+    container_name: rental_backend
+    restart: unless-stopped
+    profiles: ["full"]
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER:-rental}:${POSTGRES_PASSWORD:-rental}@db:5432/${POSTGRES_DB:-rental}
+      SECRET_KEY: ${SECRET_KEY:-change-me-in-production-please}
+      ACCESS_TOKEN_EXPIRE_MINUTES: ${ACCESS_TOKEN_EXPIRE_MINUTES:-1440}
+      BOOKING_BUFFER_MINUTES: ${BOOKING_BUFFER_MINUTES:-15}
+      CORS_ORIGINS: ${CORS_ORIGINS:-http://localhost:5173}
+    ports:
+      - "8000:8000"
+    command: >
+      sh -c "alembic upgrade head &&
+             python -m app.seed &&
+             uvicorn app.main:app --host 0.0.0.0 --port 8000"
+
+volumes:
+  pgdata:
