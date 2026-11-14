@@ -49,6 +49,7 @@ export default function OwnerPage() {
   const queryClient = useQueryClient();
   const [equipmentForm] = Form.useForm();
   const [returnForm] = Form.useForm();
+  const damageReported = Form.useWatch("damage_reported", returnForm);
   const [editing, setEditing] = useState<Equipment | null>(null);
   const [equipmentModal, setEquipmentModal] = useState(false);
   const [returning, setReturning] = useState<Booking | null>(null);
@@ -255,22 +256,27 @@ export default function OwnerPage() {
       <Row gutter={[16, 16]}>
         <Col xs={12} md={6}>
           <Card>
-            <Statistic title="Позиций" value={stats?.equipment_total ?? 0} suffix={`/ ${stats?.equipment_active ?? 0} активных`} />
+            <Statistic title="Позиций" value={stats?.equipment_total ?? 0} suffix={`/ ${stats?.equipment_active ?? 0} активных`} loading={!stats} />
           </Card>
         </Col>
         <Col xs={12} md={6}>
           <Card>
-            <Statistic title="Активных броней" value={stats?.bookings_active ?? 0} />
+            <Statistic title="Активных броней" value={stats?.bookings_active ?? 0} loading={!stats} />
           </Card>
         </Col>
         <Col xs={12} md={6}>
           <Card>
-            <Statistic title="Выручка" value={Number(stats?.revenue ?? 0)} suffix="Br" precision={0} />
+            <Statistic
+              title="Выручка"
+              value={Number(stats?.revenue ?? 0)}
+              formatter={(value) => money(value)}
+              loading={!stats}
+            />
           </Card>
         </Col>
         <Col xs={12} md={6}>
           <Card>
-            <Statistic title="Споров" value={stats?.disputes_pending ?? 0} />
+            <Statistic title="Споров" value={stats?.disputes_pending ?? 0} loading={!stats} />
           </Card>
         </Col>
       </Row>
@@ -452,7 +458,11 @@ export default function OwnerPage() {
           <Form.Item
             name="description"
             label="Комментарий"
-            rules={[{ min: 50, message: "Минимум 50 символов для спора" }]}
+            rules={
+              damageReported
+                ? [{ required: true, min: 50, message: "Минимум 50 символов для спора" }]
+                : []
+            }
           >
             <Input.TextArea rows={3} />
           </Form.Item>

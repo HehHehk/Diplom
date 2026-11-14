@@ -46,6 +46,7 @@ export default function EquipmentPage() {
   const [range, setRange] = useState<[Dayjs, Dayjs] | null>(null);
   const [quantity, setQuantity] = useState(1);
   const [unit, setUnit] = useState<BillingUnit>("day");
+  const [unitTouched, setUnitTouched] = useState(false);
 
   const { data: item, isLoading } = useQuery({
     queryKey: ["equipment", equipmentId],
@@ -90,9 +91,12 @@ export default function EquipmentPage() {
   });
 
   useEffect(() => {
-    if (preview?.recommended && !range) return;
-    if (preview?.recommended) setUnit(preview.recommended);
-  }, [preview?.recommended, range]);
+    setUnitTouched(false);
+  }, [start?.toISOString(), end?.toISOString()]);
+
+  useEffect(() => {
+    if (!unitTouched && preview?.recommended) setUnit(preview.recommended);
+  }, [preview?.recommended, unitTouched]);
 
   const selectedOption = useMemo(
     () => preview?.options.find((option) => option.billing_unit === unit),
@@ -206,7 +210,10 @@ export default function EquipmentPage() {
               {preview ? (
                 <Radio.Group
                   value={unit}
-                  onChange={(event) => setUnit(event.target.value)}
+                  onChange={(event) => {
+                    setUnitTouched(true);
+                    setUnit(event.target.value);
+                  }}
                   style={{ width: "100%" }}
                 >
                   <Space orientation="vertical" style={{ width: "100%" }}>
