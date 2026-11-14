@@ -46,6 +46,33 @@ async def test_register_short_password(client: AsyncClient):
 
 
 @pytest.mark.asyncio
+async def test_register_password_without_digit(client: AsyncClient):
+    response = await client.post(
+        REGISTER,
+        json={"email": "nodigit@example.com", "password": "abcdefghi", "full_name": "A"},
+    )
+    assert response.status_code == 422
+
+
+@pytest.mark.asyncio
+async def test_register_common_password(client: AsyncClient):
+    response = await client.post(
+        REGISTER,
+        json={"email": "common@example.com", "password": "qwerty123", "full_name": "A"},
+    )
+    assert response.status_code == 422
+
+
+@pytest.mark.asyncio
+async def test_register_strong_password(client: AsyncClient):
+    response = await client.post(
+        REGISTER,
+        json={"email": "strong@example.com", "password": "StrongPass1!", "full_name": "A"},
+    )
+    assert response.status_code == 201, response.text
+
+
+@pytest.mark.asyncio
 async def test_login_success_and_me(client: AsyncClient, db_session: AsyncSession):
     await create_user(db_session)
     token = await login(client, "user@example.com", "secret123")
