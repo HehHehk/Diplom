@@ -22,7 +22,8 @@ from app.schemas.booking import (
     PriceOption,
     ReturnRequest,
 )
-from app.services import booking_service, equipment_service
+from app.schemas.dispute import DisputeCreate
+from app.services import booking_service, dispute_service, equipment_service
 
 router = APIRouter(prefix="/bookings", tags=["bookings"])
 
@@ -249,3 +250,23 @@ async def revoke_no_show(
     if booking is None:
         raise HTTPException(status_code=404, detail="Бронь не найдена")
     return await booking_service.revoke_no_show(db, booking, user)
+
+
+@router.post("/{booking_id}/appeal", response_model=BookingRead)
+async def appeal_decision(
+    booking_id: int,
+    data: DisputeCreate,
+    db: AsyncSession = Depends(get_db),
+    user: User = Depends(get_current_user),
+) -> Booking:
+    """Оспаривание авторешения в течение 24 часов."""
+    booking = await booking_service.get_booking(db, booking_id)
+    if booking is None:
+        raise HTTPException(status_code=404, detail="Бронь не найдена")
+
+    is_owner = booking.equipment.owner_id == user.id
+    if booking.user_id != user.id and not is_owner and not user.is_admin:
+        raise HTTPException(status_code=403, detail="Нет доступа к этой брони")
+
+    await dispute_service.appeal_booking(db, booking, user, data.description)
+    return await booking_service.get_booking(db, booking_id)  # type: ignore[return-value]

@@ -14,7 +14,6 @@ from app.models.enums import (
     BillingUnit,
     BookingStatus,
     CancelledBy,
-    DisputeStatus,
     EventType,
 )
 from app.models.equipment import Equipment
@@ -342,36 +341,44 @@ async def cancel_booking(
     total = booking.total_price
     penalty = Decimal("0.00")
     compensation = Decimal("0.00")
-    refund = total
 
-    if reason in ADMIN_REVIEW_REASONS and not actor.is_admin:
-        booking.dispute_status = DisputeStatus.pending
-        booking.dispute_reason = reason
-        booking.dispute_description = description
-        refund = Decimal("0.00")
-        penalty = Decimal("0.00")
-        compensation = Decimal("0.00")
-    elif cancelled_by == CancelledBy.user and not technical:
-        if booking.start_at - now <= timedelta(hours=settings.client_cancel_deadline_hours):
-            penalty = _percent(total, settings.client_late_cancel_percent)
-            refund = total - penalty
-    elif cancelled_by == CancelledBy.owner and not technical:
-        if booking.start_at - now <= timedelta(hours=settings.owner_late_cancel_hours):
-            compensation = _percent(total, settings.owner_compensation_percent)
-        actor.cancellations_count += 1
+    if (
+        cancelled_by == CancelledBy.user
+        and not technical
+        and booking.start_at - now <= timedelta(hours=settings.client_cancel_deadline_hours)
+    ):
+        penalty = _percent(total, settings.client_late_cancel_percent)
+    elif (
+        cancelled_by == CancelledBy.owner
+        and not technical
+        and booking.start_at - now <= timedelta(hours=settings.owner_late_cancel_hours)
+    ):
+        compensation = _percent(total, settings.owner_compensation_percent)
+
+    charge = penalty + compensation
+    refund = total - penalty
+    needs_admin = reason in ADMIN_REVIEW_REASONS and not actor.is_admin and charge > 0
 
     booking.status = BookingStatus.cancelled
     booking.cancelled_at = now
     booking.cancelled_by = cancelled_by
     booking.cancellation_reason = reason
-    booking.penalty_amount = penalty
-    booking.compensation_amount = compensation
-    booking.refund_amount = refund
+    booking.appeal_deadline = now + timedelta(hours=settings.appeal_window_hours)
 
-    if penalty > 0:
-        client = await db.get(User, booking.user_id)
-        if client is not None:
-            client.penalties_count += 1
+    if needs_admin:
+        booking.penalty_amount = Decimal("0.00")
+        booking.compensation_amount = Decimal("0.00")
+        booking.refund_amount = Decimal("0.00")
+    else:
+        booking.penalty_amount = penalty
+        booking.compensation_amount = compensation
+        booking.refund_amount = refund
+        if penalty > 0:
+            client = await db.get(User, booking.user_id)
+            if client is not None:
+                client.penalties_count += 1
+        if cancelled_by == CancelledBy.owner and not technical:
+            actor.cancellations_count += 1
 
     db.add(
         BookingEvent(
@@ -383,13 +390,20 @@ async def cancel_booking(
                 "description": description,
                 "cancelled_by": cancelled_by.value,
                 "technical": technical,
-                "penalty": str(penalty),
-                "refund": str(refund),
-                "compensation": str(compensation),
-                "dispute": booking.dispute_status,
+                "penalty": str(booking.penalty_amount),
+                "refund": str(booking.refund_amount),
+                "compensation": str(booking.compensation_amount),
+                "needs_admin": needs_admin,
             },
         )
     )
+
+    if needs_admin:
+        from app.services import dispute_service
+
+        await db.flush()
+        await dispute_service.open_dispute(db, booking, actor, reason, description, charge)
+
     await db.commit()
     return await get_booking(db, booking.id)  # type: ignore[return-value]
 
@@ -478,12 +492,22 @@ async def return_booking(
     early = now < booking.end_at
     booking.returned_at = now
     booking.status = BookingStatus.terminated if early else BookingStatus.completed
+    booking.appeal_deadline = now + timedelta(hours=settings.appeal_window_hours)
 
     if damage_reported:
-        booking.dispute_status = DisputeStatus.pending
-        booking.dispute_reason = "returned_damaged"
-        booking.dispute_description = description
         booking.refund_amount = Decimal("0.00")
+        from app.services import dispute_service
+
+        await db.flush()
+        await dispute_service.open_dispute(
+            db,
+            booking,
+            actor,
+            "returned_damaged",
+            description,
+            refund,
+            force=True,
+        )
     else:
         booking.refund_amount = refund
 
@@ -510,6 +534,8 @@ async def mark_no_show(
     db: AsyncSession, booking: Booking, actor: User | None = None, at: datetime | None = None
 ) -> Booking:
     """Фиксация неявки: штраф 5%, остаток возвращается."""
+    if actor is not None:
+        _require_owner(booking, actor)
     now = at or utcnow()
     deadline = booking.no_show_deadline or no_show_deadline(booking.start_at, booking.end_at)
 
@@ -528,6 +554,7 @@ async def mark_no_show(
     booking.cancellation_reason = "client_no_show"
     booking.penalty_amount = penalty
     booking.refund_amount = booking.total_price - penalty
+    booking.appeal_deadline = now + timedelta(hours=settings.appeal_window_hours)
 
     client = await db.get(User, booking.user_id)
     if client is not None:

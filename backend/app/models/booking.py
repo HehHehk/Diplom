@@ -3,6 +3,7 @@ from decimal import Decimal
 from typing import TYPE_CHECKING
 
 from sqlalchemy import (
+    Boolean,
     CheckConstraint,
     DateTime,
     Enum,
@@ -88,6 +89,10 @@ class Booking(Base):
     )
     dispute_reason: Mapped[str | None] = mapped_column(String(50), nullable=True)
     dispute_description: Mapped[str | None] = mapped_column(Text, nullable=True)
+    dispute_created_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    dispute_premoderated: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
     resolution_outcome: Mapped[ResolutionOutcome | None] = mapped_column(
         Enum(ResolutionOutcome, name="resolution_outcome", native_enum=False, length=30),
         nullable=True,

@@ -44,6 +44,15 @@ class Settings(BaseSettings):
     no_show_scheduler_enabled: bool = True
     no_show_scheduler_interval_seconds: int = 300
 
+    dispute_max_active: int = 3
+    dispute_max_per_30d: int = 10
+    dispute_rate_per_hour: int = 5
+    dispute_min_description: int = 50
+    dispute_premoderation_ratio: float = 0.5
+    dispute_premoderation_min_total: int = 5
+    dispute_premoderation_days: int = 30
+    appeal_window_hours: int = 24
+
     @property
     def cors_origin_list(self) -> list[str]:
         return [origin.strip() for origin in self.cors_origins.split(",") if origin.strip()]

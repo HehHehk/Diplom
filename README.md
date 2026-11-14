@@ -80,6 +80,10 @@ uv run uvicorn app.main:app --reload
 | POST | `/bookings/{id}/return` | арендодатель / админ | возврат и пересчёт за неиспользованные единицы |
 | POST | `/bookings/{id}/no-show` | арендодатель / админ | фиксация неявки |
 | POST | `/bookings/{id}/no-show/revoke` | арендодатель / админ | снятие неявки в течение часа |
+| POST | `/bookings/{id}/appeal` | участник | оспаривание решения в течение 24 часов |
+| GET | `/admin/disputes` | админ | очередь споров |
+| GET | `/admin/disputes/{id}` | админ | карточка спора |
+| POST | `/admin/disputes/{id}/resolve` | админ | решение с суммами и виновной стороной |
 | GET | `/health` | все | проверка API и БД |
 
 Параметры каталога: `q`, `category`, `brand`, `min_price`, `max_price`,

@@ -6,10 +6,10 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy import text
 
-from app.api.routes import auth, bookings, equipment
+from app.api.routes import admin, auth, bookings, equipment
 from app.core.config import settings
 from app.db.session import SessionLocal, engine
-from app.services import booking_service
+from app.services import booking_service, dispute_service
 
 logger = logging.getLogger("app.no_show")
 
@@ -22,6 +22,9 @@ async def _no_show_worker() -> None:
                 count = await booking_service.apply_due_no_shows(db)
                 if count:
                     logger.info("Зафиксировано неявок: %s", count)
+                resolved = await dispute_service.apply_dispute_sla(db)
+                if resolved:
+                    logger.info("Споров закрыто по SLA: %s", resolved)
         except Exception:
             logger.exception("Ошибка обработки неявок")
         await asyncio.sleep(settings.no_show_scheduler_interval_seconds)
@@ -59,6 +62,7 @@ def create_app() -> FastAPI:
     app.include_router(auth.router)
     app.include_router(equipment.router)
     app.include_router(bookings.router)
+    app.include_router(admin.router)
 
     @app.get("/health", tags=["system"])
     async def health() -> dict[str, str]:

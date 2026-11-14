@@ -185,7 +185,10 @@ async def test_damage_reported_goes_to_dispute(client: AsyncClient, db_session: 
 
     response = await client.post(
         f"/bookings/{booking['id']}/return",
-        json={"damage_reported": True, "description": "Сломана ручка"},
+        json={
+            "damage_reported": True,
+            "description": "При возврате обнаружена трещина на корпусе, требуется оценка ущерба",
+        },
         headers=owner_headers,
     )
     data = response.json()

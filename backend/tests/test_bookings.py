@@ -363,7 +363,10 @@ async def test_emergency_cancel_goes_to_dispute(client: AsyncClient, db_session:
 
     response = await client.post(
         f"/bookings/{booking['id']}/cancel",
-        json={"reason": "emergency", "description": "Попал в больницу, справка будет позже"},
+        json={
+            "reason": "emergency",
+            "description": "Попал в больницу, есть справка, прошу рассмотреть отмену без штрафа",
+        },
         headers=headers,
     )
     data = response.json()
