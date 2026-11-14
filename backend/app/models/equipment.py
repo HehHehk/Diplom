@@ -35,6 +35,15 @@ class Equipment(Base):
         CheckConstraint("min_days > 0", name="min_days_positive"),
         CheckConstraint("max_hours >= min_hours", name="hours_range"),
         CheckConstraint("max_days >= min_days", name="days_range"),
+        CheckConstraint("quantity >= 0", name="quantity_non_negative"),
+        CheckConstraint(
+            "price_per_hour IS NULL OR price_per_hour >= 0",
+            name="hour_price_non_negative",
+        ),
+        CheckConstraint(
+            "price_per_day IS NULL OR price_per_day >= 0",
+            name="day_price_non_negative",
+        ),
     )
 
     id: Mapped[int] = mapped_column(primary_key=True)

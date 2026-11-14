@@ -2,12 +2,14 @@ from datetime import UTC, datetime, timedelta
 
 import pytest
 from httpx import AsyncClient
-from sqlalchemy import select
+from sqlalchemy import func, select, text
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import settings
 from app.models.booking import Booking
-from app.models.enums import UserRole
+from app.models.enums import InteractionType, UserRole
+from app.models.interaction import Interaction
 from app.models.user import User
 from app.services import booking_service, dispute_service
 from tests.helpers import auth_headers, create_equipment, create_user, login
@@ -540,3 +542,67 @@ async def test_scheduler_handles_missing_deadline(client: AsyncClient, db_sessio
         no_show_deadline=None,
     )
     assert await booking_service.apply_due_no_shows(db_session) == 1
+
+
+@pytest.mark.asyncio
+async def test_dispute_description_min_length(client: AsyncClient, db_session: AsyncSession):
+    headers = await auth_headers(client, db_session)
+    item = await create_equipment(db_session, price_per_hour="100.00")
+    booking = await make_booking(
+        client, headers, item.id, now() + timedelta(hours=1), now() + timedelta(hours=4)
+    )
+    response = await client.post(
+        f"/bookings/{booking['id']}/cancel",
+        json={"reason": "emergency", "description": "слишком коротко"},
+        headers=headers,
+    )
+    assert response.status_code == 422
+
+
+@pytest.mark.asyncio
+async def test_login_rate_limit(
+    client: AsyncClient, db_session: AsyncSession, monkeypatch: pytest.MonkeyPatch
+):
+    monkeypatch.setattr(settings, "login_rate_limit_attempts", 2)
+    user = await create_user(db_session, email="ratelimit@example.com")
+
+    for _ in range(2):
+        response = await client.post(
+            "/auth/login", data={"username": user.email, "password": "wrong"}
+        )
+        assert response.status_code == 401
+
+    blocked = await client.post(
+        "/auth/login", data={"username": user.email, "password": "secret123"}
+    )
+    assert blocked.status_code == 429
+
+
+@pytest.mark.asyncio
+async def test_view_deduplicated(client: AsyncClient, db_session: AsyncSession):
+    headers = await auth_headers(client, db_session)
+    item = await create_equipment(db_session)
+
+    await client.get(f"/equipment/{item.id}", headers=headers)
+    await client.get(f"/equipment/{item.id}", headers=headers)
+
+    count = await db_session.scalar(
+        select(func.count())
+        .select_from(Interaction)
+        .where(
+            Interaction.equipment_id == item.id,
+            Interaction.type == InteractionType.view,
+        )
+    )
+    assert count == 1
+
+
+@pytest.mark.asyncio
+async def test_quantity_db_constraint(db_session: AsyncSession):
+    item = await create_equipment(db_session)
+    with pytest.raises(IntegrityError):
+        await db_session.execute(
+            text("UPDATE equipment SET quantity = -1 WHERE id = :id"), {"id": item.id}
+        )
+        await db_session.commit()
+    await db_session.rollback()

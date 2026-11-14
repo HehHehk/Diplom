@@ -54,6 +54,9 @@ class Settings(BaseSettings):
     dispute_premoderation_min_total: int = 5
     dispute_premoderation_days: int = 30
     appeal_window_hours: int = 24
+    view_dedup_minutes: int = 30
+    login_rate_limit_attempts: int = 10
+    login_rate_limit_window_minutes: int = 5
 
     @property
     def cors_origin_list(self) -> list[str]:

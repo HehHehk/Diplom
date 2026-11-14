@@ -4,6 +4,7 @@ from typing import Literal
 
 from pydantic import BaseModel, Field
 
+from app.core.config import settings
 from app.models.enums import DisputeStatus, ResolutionOutcome
 
 DisputeReason = Literal[
@@ -19,7 +20,7 @@ DisputeReason = Literal[
 
 class DisputeCreate(BaseModel):
     reason: DisputeReason
-    description: str = Field(min_length=10, max_length=2000)
+    description: str = Field(min_length=settings.dispute_min_description, max_length=2000)
 
 
 class DisputeResolve(BaseModel):

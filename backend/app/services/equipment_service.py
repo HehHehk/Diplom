@@ -1,3 +1,4 @@
+from datetime import UTC, datetime, timedelta
 from decimal import Decimal
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
@@ -97,6 +98,21 @@ async def list_categories(db: AsyncSession) -> list[str]:
 
 
 async def log_view(db: AsyncSession, equipment_id: int, user_id: int | None) -> None:
+    if user_id is not None:
+        cutoff = datetime.now(UTC) - timedelta(minutes=settings.view_dedup_minutes)
+        recent = await db.scalar(
+            select(Interaction.id)
+            .where(
+                Interaction.user_id == user_id,
+                Interaction.equipment_id == equipment_id,
+                Interaction.type == InteractionType.view,
+                Interaction.created_at >= cutoff,
+            )
+            .limit(1)
+        )
+        if recent is not None:
+            return
+
     db.add(
         Interaction(
             equipment_id=equipment_id,
