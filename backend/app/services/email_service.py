@@ -29,12 +29,22 @@ def _send_smtp(to: str, subject: str, body: str) -> None:
     message["Subject"] = subject
     message.set_content(body)
 
-    with smtplib.SMTP(settings.smtp_host, settings.smtp_port, timeout=15) as smtp:
-        if settings.smtp_tls:
-            smtp.starttls()
+    use_ssl = settings.smtp_ssl or settings.smtp_port == 465
+    if use_ssl:
+        server = smtplib.SMTP_SSL(settings.smtp_host, settings.smtp_port, timeout=20)
+    else:
+        server = smtplib.SMTP(settings.smtp_host, settings.smtp_port, timeout=20)
+
+    with server:
+        if not use_ssl and settings.smtp_tls:
+            server.starttls()
         if settings.smtp_user and settings.smtp_password:
-            smtp.login(settings.smtp_user, settings.smtp_password)
-        smtp.send_message(message)
+            server.login(settings.smtp_user, settings.smtp_password)
+        server.send_message(message)
+
+
+def send_test_email(to: str) -> None:
+    _send_smtp(to, "Проверка SMTP — АрендаПро", "Тестовое письмо. SMTP настроен корректно.")
 
 
 async def send_verification_email(email: str, token: str) -> None:

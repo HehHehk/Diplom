@@ -67,6 +67,7 @@ class Settings(BaseSettings):
     smtp_password: str | None = None
     smtp_from: str = "no-reply@example.com"
     smtp_tls: bool = True
+    smtp_ssl: bool = False
 
     @property
     def cors_origin_list(self) -> list[str]:
