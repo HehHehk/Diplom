@@ -7,9 +7,11 @@ import EquipmentCard from "./EquipmentCard";
 export default function EquipmentRail({
   title,
   source,
+  layout = "grid",
 }: {
   title: string;
   source: { kind: "recommendations"; equipmentId: number } | { kind: "popular" };
+  layout?: "grid" | "row";
 }) {
   const path =
     source.kind === "popular"
@@ -34,7 +36,7 @@ export default function EquipmentRail({
           <Alert type="info" showIcon title="Показаны популярные позиции" />
         ) : null}
       </div>
-      <div className="card-grid">
+      <div className={layout === "row" ? "rail-row" : "card-grid"}>
         {data.items.map((item) => (
           <EquipmentCard
             key={item.id}

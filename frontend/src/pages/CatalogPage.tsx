@@ -52,7 +52,13 @@ export default function CatalogPage() {
         />
       </section>
 
-      <EquipmentRail title="Популярное сейчас" source={{ kind: "popular" }} />
+      {!q.trim() ? (
+        <EquipmentRail
+          title="Популярное сейчас"
+          source={{ kind: "popular" }}
+          layout="row"
+        />
+      ) : null}
 
       <div className="catalog-toolbar">
         <Select
