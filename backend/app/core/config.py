@@ -41,6 +41,8 @@ class Settings(BaseSettings):
     no_show_min_minutes: int = 15
     no_show_max_minutes: int = 120
     dispute_sla_hours: int = 48
+    no_show_scheduler_enabled: bool = True
+    no_show_scheduler_interval_seconds: int = 300
 
     @property
     def cors_origin_list(self) -> list[str]:

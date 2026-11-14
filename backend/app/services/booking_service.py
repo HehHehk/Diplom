@@ -47,7 +47,7 @@ def _conflict(detail: str, extra: dict | None = None) -> HTTPException:
     return HTTPException(status_code=status.HTTP_409_CONFLICT, detail=payload)
 
 
-# --- Р¦РµРЅР° ---------------------------------------------------------------
+# --- Цена ---------------------------------------------------------------
 
 
 def calculate_units(start_at: datetime, end_at: datetime, billing_unit: BillingUnit) -> int:
@@ -64,19 +64,19 @@ def price_for(
     billing_unit: BillingUnit,
     quantity: int,
 ) -> tuple[int, Decimal, Decimal]:
-    """Р’РѕР·РІСЂР°С‰Р°РµС‚ (РµРґРёРЅРёС†С‹, С†РµРЅР° Р·Р° РµРґРёРЅРёС†Сѓ, РёС‚РѕРі)."""
+    """Возвращает (единицы, цена за единицу, итог)."""
     unit_price = (
         equipment.price_per_hour if billing_unit == BillingUnit.hour else equipment.price_per_day
     )
     if unit_price is None:
-        raise _bad_request("Р”Р»СЏ РІС‹Р±СЂР°РЅРЅРѕРіРѕ С‚Р°СЂРёС„Р° С†РµРЅР° РЅРµ Р·Р°РґР°РЅР°")
+        raise _bad_request("Для выбранного тарифа цена не задана")
 
     units = calculate_units(start_at, end_at, billing_unit)
     total = (unit_price * units * quantity).quantize(Decimal("0.01"))
     return units, unit_price, total
 
 
-# --- Р Р°Р±РѕС‡РёРµ С‡Р°СЃС‹ --------------------------------------------------------
+# --- Рабочие часы --------------------------------------------------------
 
 
 def _parse_working_hours(raw: dict | None) -> dict[int, list[tuple[time, time]]]:
@@ -110,20 +110,16 @@ def validate_working_hours(equipment: Equipment, start_at: datetime, end_at: dat
 
     start_intervals = schedule.get(local_start.weekday(), [])
     if not start_intervals:
-        raise _bad_request("Р’ СЌС‚РѕС‚ РґРµРЅСЊ РІС‹РґР°С‡Р° РЅРµ СЂР°Р±РѕС‚Р°РµС‚")
+        raise _bad_request("В этот день выдача не работает")
     if not _inside(start_intervals, local_start.timetz().replace(tzinfo=None)):
-        raise _bad_request(
-            f"Р’С‹РґР°С‡Р° РІРѕР·РјРѕР¶РЅР° С‚РѕР»СЊРєРѕ РІ СЂР°Р±РѕС‡РёРµ С‡Р°СЃС‹ ({equipment.timezone})"
-        )
+        raise _bad_request(f"Выдача возможна только в рабочие часы ({equipment.timezone})")
 
     end_intervals = schedule.get(local_end.weekday(), [])
     if not end_intervals or not _inside(end_intervals, local_end.timetz().replace(tzinfo=None)):
-        raise _bad_request(
-            "Р’РѕР·РІСЂР°С‚ РґРѕР»Р¶РµРЅ РїРѕРїР°РґР°С‚СЊ РІ СЂР°Р±РѕС‡РёРµ С‡Р°СЃС‹"
-        )
+        raise _bad_request("Возврат должен попадать в рабочие часы")
 
 
-# --- Р’Р°Р»РёРґР°С†РёСЏ -----------------------------------------------------------
+# --- Валидация -----------------------------------------------------------
 
 
 def validate_period(
@@ -136,55 +132,47 @@ def validate_period(
     now = utcnow()
 
     if start_at >= end_at:
-        raise _bad_request(
-            "РќР°С‡Р°Р»Рѕ Р°СЂРµРЅРґС‹ РґРѕР»Р¶РЅРѕ Р±С‹С‚СЊ СЂР°РЅСЊС€Рµ РѕРєРѕРЅС‡Р°РЅРёСЏ"
-        )
+        raise _bad_request("Начало аренды должно быть раньше окончания")
 
     lead = timedelta(minutes=equipment.lead_time_minutes)
     if start_at < now + lead:
         raise _bad_request(
-            f"Р‘СЂРѕРЅРёСЂРѕРІР°С‚СЊ РјРѕР¶РЅРѕ РЅРµ РїРѕР·РґРЅРµРµ С‡РµРј Р·Р° {equipment.lead_time_minutes} РјРёРЅ РґРѕ РЅР°С‡Р°Р»Р°"
+            f"Бронировать можно не позднее чем за {equipment.lead_time_minutes} мин до начала"
         )
 
     horizon = timedelta(days=settings.booking_horizon_days)
     if start_at > now + horizon:
-        raise _bad_request(
-            f"Р‘СЂРѕРЅРёСЂРѕРІР°РЅРёРµ РґРѕСЃС‚СѓРїРЅРѕ РЅРµ РґР°Р»СЊС€Рµ {settings.booking_horizon_days} РґРЅРµР№"
-        )
+        raise _bad_request(f"Бронирование доступно не дальше {settings.booking_horizon_days} дней")
 
     if quantity < 1 or quantity > equipment.quantity:
-        raise _bad_request(f"Р”РѕСЃС‚СѓРїРЅРѕ СЌРєР·РµРјРїР»СЏСЂРѕРІ: {equipment.quantity}")
+        raise _bad_request(f"Доступно экземпляров: {equipment.quantity}")
 
     minutes = (end_at - start_at).total_seconds() / 60
     max_days = min(equipment.max_days, settings.max_rental_days)
 
     if billing_unit == BillingUnit.hour:
         if equipment.price_per_hour is None:
-            raise _bad_request("Р§Р°СЃРѕРІРѕР№ С‚Р°СЂРёС„ РЅРµРґРѕСЃС‚СѓРїРµРЅ")
+            raise _bad_request("Часовой тариф недоступен")
         if minutes < equipment.min_hours * 60:
-            raise _bad_request(f"РњРёРЅРёРјР°Р»СЊРЅР°СЏ Р°СЂРµРЅРґР° вЂ” {equipment.min_hours} С‡")
+            raise _bad_request(f"Минимальная аренда — {equipment.min_hours} ч")
         if minutes > equipment.max_hours * 60:
-            raise _bad_request(
-                f"РњР°РєСЃРёРјР°Р»СЊРЅР°СЏ Р°СЂРµРЅРґР° РїРѕ С‡Р°СЃР°Рј вЂ” {equipment.max_hours} С‡"
-            )
+            raise _bad_request(f"Максимальная аренда по часам — {equipment.max_hours} ч")
     else:
         if equipment.price_per_day is None:
-            raise _bad_request("РЎСѓС‚РѕС‡РЅС‹Р№ С‚Р°СЂРёС„ РЅРµРґРѕСЃС‚СѓРїРµРЅ")
+            raise _bad_request("Суточный тариф недоступен")
         if minutes < equipment.min_days * 1440:
-            raise _bad_request(
-                f"РњРёРЅРёРјР°Р»СЊРЅР°СЏ Р°СЂРµРЅРґР° вЂ” {equipment.min_days} СЃСѓС‚"
-            )
+            raise _bad_request(f"Минимальная аренда — {equipment.min_days} сут")
         if minutes > max_days * 1440:
-            raise _bad_request(f"РњР°РєСЃРёРјР°Р»СЊРЅР°СЏ Р°СЂРµРЅРґР° вЂ” {max_days} СЃСѓС‚")
+            raise _bad_request(f"Максимальная аренда — {max_days} сут")
 
     validate_working_hours(equipment, start_at, end_at)
 
 
-# --- РљРѕРЅС„Р»РёРєС‚С‹ -----------------------------------------------------------
+# --- Конфликты -----------------------------------------------------------
 
 
 def effective_start():
-    """Р¤Р°РєС‚РёС‡РµСЃРєРѕРµ РЅР°С‡Р°Р»Рѕ: РїСЂРё СЂР°РЅРЅРµР№ РІС‹РґР°С‡Рµ РѕР±РѕСЂСѓРґРѕРІР°РЅРёРµ Р·Р°РЅСЏС‚Рѕ СЂР°РЅСЊС€Рµ."""
+    """Фактическое начало: при ранней выдаче оборудование занято раньше."""
     return func.least(Booking.start_at, func.coalesce(Booking.picked_up_at, Booking.start_at))
 
 
@@ -194,6 +182,8 @@ async def booked_quantity(
     start_at: datetime,
     end_at: datetime,
     buffer_minutes: int,
+    *,
+    exclude_booking_id: int | None = None,
 ) -> int:
     buffer = timedelta(minutes=buffer_minutes)
     stmt = select(func.coalesce(func.sum(Booking.quantity), 0)).where(
@@ -202,6 +192,8 @@ async def booked_quantity(
         effective_start() < end_at + buffer,
         Booking.end_at > start_at - buffer,
     )
+    if exclude_booking_id is not None:
+        stmt = stmt.where(Booking.id != exclude_booking_id)
     return int(await db.scalar(stmt) or 0)
 
 
@@ -225,7 +217,7 @@ async def busy_intervals(
 
 
 async def lock_equipment(db: AsyncSession, equipment_id: int) -> None:
-    """РЎРµСЂРёР°Р»РёР·СѓРµС‚ РїСЂРѕРІРµСЂРєСѓ Рё РІСЃС‚Р°РІРєСѓ Р±СЂРѕРЅРё РґР»СЏ РѕРґРЅРѕР№ РµРґРёРЅРёС†С‹ РѕР±РѕСЂСѓРґРѕРІР°РЅРёСЏ."""
+    """Сериализует проверку и вставку брони для одной единицы оборудования."""
     await db.execute(select(Equipment.id).where(Equipment.id == equipment_id).with_for_update())
 
 
@@ -240,12 +232,22 @@ async def check_capacity(
     if booked + quantity > equipment.quantity:
         free = max(0, equipment.quantity - booked)
         raise _conflict(
-            "РќРµРґРѕСЃС‚Р°С‚РѕС‡РЅРѕ СЃРІРѕР±РѕРґРЅС‹С… СЌРєР·РµРјРїР»СЏСЂРѕРІ РЅР° РІС‹Р±СЂР°РЅРЅС‹Р№ РїРµСЂРёРѕРґ",
+            "Недостаточно свободных экземпляров на выбранный период",
             {"requested": quantity, "free": free, "quantity": equipment.quantity},
         )
 
 
-# --- РЎРѕР·РґР°РЅРёРµ Рё РѕС‚РјРµРЅР° ---------------------------------------------------
+# --- Создание, выдача и возврат ------------------------------------------
+
+
+def no_show_deadline(start_at: datetime, end_at: datetime) -> datetime:
+    """Адаптивное окно неявки: 25% длительности, от 15 минут до 2 часов."""
+    minutes = (end_at - start_at).total_seconds() / 60
+    window = minutes * settings.no_show_percent_of_duration / 100
+    window = min(max(window, settings.no_show_min_minutes), settings.no_show_max_minutes)
+    deadline = start_at + timedelta(minutes=window)
+    limit = end_at - timedelta(minutes=5)
+    return min(deadline, limit) if limit > start_at else start_at
 
 
 async def create_booking(
@@ -273,6 +275,7 @@ async def create_booking(
         unit_price=unit_price,
         total_price=total,
         status=BookingStatus.confirmed,
+        no_show_deadline=no_show_deadline(start_at, end_at),
     )
     db.add(booking)
     await db.flush()
@@ -318,18 +321,11 @@ async def cancel_booking(
     now = utcnow()
 
     if booking.status != BookingStatus.confirmed:
-        raise _conflict(
-            "Р­С‚Сѓ Р±СЂРѕРЅСЊ РЅРµР»СЊР·СЏ РѕС‚РјРµРЅРёС‚СЊ: С‚РµРєСѓС‰РёР№ СЃС‚Р°С‚СѓСЃ вЂ” "
-            + booking.status.value
-        )
+        raise _conflict("Эту бронь нельзя отменить: текущий статус — " + booking.status.value)
     if booking.picked_up_at is not None:
-        raise _conflict(
-            "РђСЂРµРЅРґР° СѓР¶Рµ РЅР°С‡Р°Р»Р°СЃСЊ вЂ” РёСЃРїРѕР»СЊР·СѓР№С‚Рµ РґРѕСЃСЂРѕС‡РЅС‹Р№ РІРѕР·РІСЂР°С‚"
-        )
+        raise _conflict("Аренда уже началась — используйте досрочный возврат")
     if now >= booking.start_at:
-        raise _conflict(
-            "РђСЂРµРЅРґР° СѓР¶Рµ РЅР°С‡Р°Р»Р°СЃСЊ вЂ” РёСЃРїРѕР»СЊР·СѓР№С‚Рµ РґРѕСЃСЂРѕС‡РЅС‹Р№ РІРѕР·РІСЂР°С‚"
-        )
+        raise _conflict("Аренда уже началась — используйте досрочный возврат")
 
     cancelled_by = (
         CancelledBy.admin
@@ -396,3 +392,208 @@ async def cancel_booking(
     )
     await db.commit()
     return await get_booking(db, booking.id)  # type: ignore[return-value]
+
+
+# --- Выдача, возврат, неявка --------------------------------------------
+
+
+def _require_owner(booking: Booking, actor: User) -> None:
+    if not actor.is_admin and booking.equipment.owner_id != actor.id:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Действие доступно только арендодателю позиции",
+        )
+
+
+async def pickup_booking(
+    db: AsyncSession, booking: Booking, actor: User, at: datetime | None = None
+) -> Booking:
+    """Выдача оборудования. Ранняя выдача бесплатна, конец аренды не меняется."""
+    _require_owner(booking, actor)
+    now = at or utcnow()
+
+    if booking.status != BookingStatus.confirmed:
+        raise _conflict("Выдать можно только подтверждённую бронь")
+    if booking.picked_up_at is not None:
+        raise _conflict("Оборудование уже выдано")
+    if now > booking.end_at:
+        raise _conflict("Срок брони истёк — выдавать нечего")
+
+    if now < booking.start_at:
+        equipment = booking.equipment
+        validate_working_hours(equipment, now, min(now + timedelta(minutes=1), booking.end_at))
+        booked = await booked_quantity(
+            db,
+            equipment.id,
+            now,
+            booking.end_at,
+            equipment.buffer_minutes,
+            exclude_booking_id=booking.id,
+        )
+        if booked + booking.quantity > equipment.quantity:
+            raise _conflict("Нельзя выдать раньше: оборудование занято другой бронью")
+
+    booking.picked_up_at = now
+    db.add(
+        BookingEvent(
+            booking_id=booking.id,
+            actor_id=actor.id,
+            type=EventType.picked_up,
+            payload={
+                "early": now < booking.start_at,
+                "planned_start": booking.start_at.isoformat(),
+                "picked_up_at": now.isoformat(),
+            },
+        )
+    )
+    await db.commit()
+    return await get_booking(db, booking.id)  # type: ignore[return-value]
+
+
+async def return_booking(
+    db: AsyncSession,
+    booking: Booking,
+    actor: User,
+    *,
+    damage_reported: bool = False,
+    description: str | None = None,
+) -> Booking:
+    """Возврат оборудования. За неиспользованные единицы начисляется возврат."""
+    _require_owner(booking, actor)
+    now = utcnow()
+
+    if booking.status != BookingStatus.confirmed:
+        raise _conflict("Возврат возможен только для активной брони")
+    if booking.picked_up_at is None:
+        raise _conflict("Сначала отметьте выдачу оборудования")
+    if now < booking.picked_up_at:
+        raise _conflict("Дата возврата раньше даты выдачи")
+
+    effective_end = min(now, booking.end_at)
+    paid_units = calculate_units(booking.start_at, booking.end_at, booking.billing_unit)
+    used_units = calculate_units(booking.picked_up_at, effective_end, booking.billing_unit)
+    refund_units = max(0, paid_units - used_units)
+    refund = (booking.unit_price * refund_units * booking.quantity).quantize(Decimal("0.01"))
+
+    early = now < booking.end_at
+    booking.returned_at = now
+    booking.status = BookingStatus.terminated if early else BookingStatus.completed
+
+    if damage_reported:
+        booking.dispute_status = DisputeStatus.pending
+        booking.dispute_reason = "returned_damaged"
+        booking.dispute_description = description
+        booking.refund_amount = Decimal("0.00")
+    else:
+        booking.refund_amount = refund
+
+    db.add(
+        BookingEvent(
+            booking_id=booking.id,
+            actor_id=actor.id,
+            type=EventType.returned,
+            payload={
+                "early": early,
+                "paid_units": paid_units,
+                "used_units": used_units,
+                "refund": str(booking.refund_amount),
+                "damage_reported": damage_reported,
+                "description": description,
+            },
+        )
+    )
+    await db.commit()
+    return await get_booking(db, booking.id)  # type: ignore[return-value]
+
+
+async def mark_no_show(
+    db: AsyncSession, booking: Booking, actor: User | None = None, at: datetime | None = None
+) -> Booking:
+    """Фиксация неявки: штраф 5%, остаток возвращается."""
+    now = at or utcnow()
+    deadline = booking.no_show_deadline or no_show_deadline(booking.start_at, booking.end_at)
+
+    if booking.status != BookingStatus.confirmed:
+        raise _conflict("Неявку можно отметить только для активной брони")
+    if booking.picked_up_at is not None:
+        raise _conflict("Оборудование было выдано — неявки нет")
+    if now < deadline:
+        raise _conflict("Окно неявки ещё не истекло")
+
+    penalty = _percent(booking.total_price, settings.client_late_cancel_percent)
+    booking.status = BookingStatus.no_show
+    booking.no_show_at = now
+    booking.cancelled_at = now
+    booking.cancelled_by = CancelledBy.system
+    booking.cancellation_reason = "client_no_show"
+    booking.penalty_amount = penalty
+    booking.refund_amount = booking.total_price - penalty
+
+    client = await db.get(User, booking.user_id)
+    if client is not None:
+        client.penalties_count += 1
+
+    db.add(
+        BookingEvent(
+            booking_id=booking.id,
+            actor_id=actor.id if actor else None,
+            type=EventType.no_show,
+            payload={
+                "penalty": str(penalty),
+                "refund": str(booking.refund_amount),
+                "deadline": deadline.isoformat(),
+            },
+        )
+    )
+    await db.commit()
+    return await get_booking(db, booking.id)  # type: ignore[return-value]
+
+
+async def revoke_no_show(db: AsyncSession, booking: Booking, actor: User) -> Booking:
+    """Арендодатель может снять неявку в течение часа после фиксации."""
+    _require_owner(booking, actor)
+    now = utcnow()
+
+    if booking.status != BookingStatus.no_show:
+        raise _conflict("Бронь не в статусе неявки")
+    if booking.no_show_at is None or now > booking.no_show_at + timedelta(hours=1):
+        raise _conflict("Срок снятия неявки истёк")
+
+    booking.status = BookingStatus.confirmed
+    booking.no_show_cancelled_at = now
+    booking.no_show_at = None
+    booking.cancelled_at = None
+    booking.cancelled_by = None
+    booking.cancellation_reason = None
+    booking.penalty_amount = Decimal("0.00")
+    booking.refund_amount = Decimal("0.00")
+
+    client = await db.get(User, booking.user_id)
+    if client is not None and client.penalties_count > 0:
+        client.penalties_count -= 1
+
+    db.add(
+        BookingEvent(
+            booking_id=booking.id,
+            actor_id=actor.id,
+            type=EventType.no_show_revoked,
+            payload={"revoked_at": now.isoformat()},
+        )
+    )
+    await db.commit()
+    return await get_booking(db, booking.id)  # type: ignore[return-value]
+
+
+async def apply_due_no_shows(db: AsyncSession) -> int:
+    """Пакетная обработка просроченных неявок. Вызывается планировщиком."""
+    now = utcnow()
+    stmt = select(Booking).where(
+        Booking.status == BookingStatus.confirmed,
+        Booking.picked_up_at.is_(None),
+        Booking.no_show_deadline.is_not(None),
+        Booking.no_show_deadline <= now,
+    )
+    bookings = list((await db.scalars(stmt)).all())
+    for booking in bookings:
+        await mark_no_show(db, booking, None, now)
+    return len(bookings)

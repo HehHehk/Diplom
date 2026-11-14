@@ -11,7 +11,7 @@ from tests.helpers import auth_headers, create_equipment, create_user
 
 def moment(days: int = 0, hours: int = 0, minutes: int = 0) -> datetime:
     base = datetime.now(UTC) + timedelta(days=days, hours=hours, minutes=minutes)
-    return base.replace(minute=0, second=0, microsecond=0)
+    return base.replace(second=0, microsecond=0)
 
 
 def payload(equipment_id: int, start: datetime, end: datetime, **extra) -> dict:

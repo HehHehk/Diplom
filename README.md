@@ -76,6 +76,10 @@ uv run uvicorn app.main:app --reload
 | GET | `/bookings/my` | авторизован | мои брони |
 | GET | `/bookings/{id}` | участник / админ | карточка брони |
 | POST | `/bookings/{id}/cancel` | участник / админ | отмена с расчётом штрафа и возврата |
+| POST | `/bookings/{id}/pickup` | арендодатель / админ | выдача (включая раннюю) |
+| POST | `/bookings/{id}/return` | арендодатель / админ | возврат и пересчёт за неиспользованные единицы |
+| POST | `/bookings/{id}/no-show` | арендодатель / админ | фиксация неявки |
+| POST | `/bookings/{id}/no-show/revoke` | арендодатель / админ | снятие неявки в течение часа |
 | GET | `/health` | все | проверка API и БД |
 
 Параметры каталога: `q`, `category`, `brand`, `min_price`, `max_price`,

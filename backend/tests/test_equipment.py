@@ -18,7 +18,7 @@ async def test_catalog_empty(client: AsyncClient):
 @pytest.mark.asyncio
 async def test_catalog_pagination(client: AsyncClient, db_session: AsyncSession):
     for i in range(7):
-        await create_equipment(db_session, title=f"РџРѕР·РёС†РёСЏ {i}")
+        await create_equipment(db_session, title=f"Позиция {i}")
 
     response = await client.get("/equipment", params={"limit": 3, "offset": 6})
     assert response.status_code == 200
@@ -30,8 +30,8 @@ async def test_catalog_pagination(client: AsyncClient, db_session: AsyncSession)
 
 @pytest.mark.asyncio
 async def test_catalog_search(client: AsyncClient, db_session: AsyncSession):
-    await create_equipment(db_session, title="РџРµСЂС„РѕСЂР°С‚РѕСЂ Bosch")
-    await create_equipment(db_session, title="Р‘РµРЅР·РѕРїРёР»Р° Stihl", brand="Stihl")
+    await create_equipment(db_session, title="Перфоратор Bosch")
+    await create_equipment(db_session, title="Бензопила Stihl", brand="Stihl")
 
     response = await client.get("/equipment", params={"q": "bosch"})
     data = response.json()
@@ -41,24 +41,18 @@ async def test_catalog_search(client: AsyncClient, db_session: AsyncSession):
 
 @pytest.mark.asyncio
 async def test_catalog_filters(client: AsyncClient, db_session: AsyncSession):
-    await create_equipment(
-        db_session, title="A", category="РРЅСЃС‚СЂСѓРјРµРЅС‚", price_per_day="100.00"
-    )
-    await create_equipment(
-        db_session, title="B", category="РРЅСЃС‚СЂСѓРјРµРЅС‚", price_per_day="900.00"
-    )
-    await create_equipment(db_session, title="C", category="РЎР°Рґ", price_per_day="500.00")
+    await create_equipment(db_session, title="A", category="Инструмент", price_per_day="100.00")
+    await create_equipment(db_session, title="B", category="Инструмент", price_per_day="900.00")
+    await create_equipment(db_session, title="C", category="Сад", price_per_day="500.00")
 
-    by_category = (
-        await client.get("/equipment", params={"category": "РРЅСЃС‚СЂСѓРјРµРЅС‚"})
-    ).json()
+    by_category = (await client.get("/equipment", params={"category": "Инструмент"})).json()
     assert by_category["total"] == 2
 
     by_price = (await client.get("/equipment", params={"min_price": 400, "max_price": 1000})).json()
     assert by_price["total"] == 2
 
     combined = (
-        await client.get("/equipment", params={"category": "РРЅСЃС‚СЂСѓРјРµРЅС‚", "max_price": 500})
+        await client.get("/equipment", params={"category": "Инструмент", "max_price": 500})
     ).json()
     assert combined["total"] == 1
     assert combined["items"][0]["title"] == "A"
@@ -79,13 +73,13 @@ async def test_catalog_sort_by_price(client: AsyncClient, db_session: AsyncSessi
 
 @pytest.mark.asyncio
 async def test_categories(client: AsyncClient, db_session: AsyncSession):
-    await create_equipment(db_session, title="A", category="РРЅСЃС‚СЂСѓРјРµРЅС‚")
-    await create_equipment(db_session, title="B", category="РЎР°Рґ")
-    await create_equipment(db_session, title="C", category="РЎР°Рґ")
+    await create_equipment(db_session, title="A", category="Инструмент")
+    await create_equipment(db_session, title="B", category="Сад")
+    await create_equipment(db_session, title="C", category="Сад")
 
     response = await client.get("/equipment/categories")
     assert response.status_code == 200
-    assert sorted(response.json()) == ["РРЅСЃС‚СЂСѓРјРµРЅС‚", "РЎР°Рґ"]
+    assert sorted(response.json()) == ["Инструмент", "Сад"]
 
 
 @pytest.mark.asyncio

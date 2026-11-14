@@ -53,6 +53,7 @@ class EventType(str, enum.Enum):
     returned = "returned"
     cancelled = "cancelled"
     no_show = "no_show"
+    no_show_revoked = "no_show_revoked"
     dispute_opened = "dispute_opened"
     dispute_resolved = "dispute_resolved"
     penalty_applied = "penalty_applied"

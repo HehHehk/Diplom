@@ -74,6 +74,8 @@ class BookingRead(BaseModel):
     compensation_amount: Decimal
     damage_amount: Decimal
     dispute_status: DisputeStatus
+    no_show_deadline: datetime | None
+    no_show_at: datetime | None
     created_at: datetime
     equipment: EquipmentBrief
 
@@ -88,6 +90,11 @@ class BookingPage(BaseModel):
 
 class CancelRequest(BaseModel):
     reason: CancelReason
+    description: str | None = Field(default=None, max_length=1000)
+
+
+class ReturnRequest(BaseModel):
+    damage_reported: bool = False
     description: str | None = Field(default=None, max_length=1000)
 
 

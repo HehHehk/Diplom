@@ -1,10 +1,43 @@
+import asyncio
+import logging
+from contextlib import asynccontextmanager, suppress
+
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy import text
 
 from app.api.routes import auth, bookings, equipment
 from app.core.config import settings
-from app.db.session import engine
+from app.db.session import SessionLocal, engine
+from app.services import booking_service
+
+logger = logging.getLogger("app.no_show")
+
+
+async def _no_show_worker() -> None:
+    """Периодически фиксирует неявки, у которых истекло адаптивное окно."""
+    while True:
+        try:
+            async with SessionLocal() as db:
+                count = await booking_service.apply_due_no_shows(db)
+                if count:
+                    logger.info("Зафиксировано неявок: %s", count)
+        except Exception:
+            logger.exception("Ошибка обработки неявок")
+        await asyncio.sleep(settings.no_show_scheduler_interval_seconds)
+
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    task: asyncio.Task | None = None
+    if settings.no_show_scheduler_enabled:
+        task = asyncio.create_task(_no_show_worker())
+    yield
+    if task is not None:
+        task.cancel()
+        with suppress(asyncio.CancelledError):
+            await task
+    await engine.dispose()
 
 
 def create_app() -> FastAPI:
@@ -12,6 +45,7 @@ def create_app() -> FastAPI:
         title=settings.app_name,
         version="0.1.0",
         description="API для аренды оборудования с интеллектуальным бронированием",
+        lifespan=lifespan,
     )
 
     app.add_middleware(

@@ -20,6 +20,7 @@ from app.schemas.booking import (
     BookingRead,
     CancelRequest,
     PriceOption,
+    ReturnRequest,
 )
 from app.services import booking_service, equipment_service
 
@@ -189,3 +190,62 @@ async def cancel_booking(
         raise HTTPException(status_code=403, detail="Нет доступа к этой брони")
 
     return await booking_service.cancel_booking(db, booking, user, data.reason, data.description)
+
+
+@router.post("/{booking_id}/pickup", response_model=BookingRead)
+async def pickup_booking(
+    booking_id: int,
+    db: AsyncSession = Depends(get_db),
+    user: User = Depends(get_current_user),
+) -> Booking:
+    """Выдача оборудования арендодателем. Ранняя выдача разрешена."""
+    booking = await booking_service.get_booking(db, booking_id)
+    if booking is None:
+        raise HTTPException(status_code=404, detail="Бронь не найдена")
+    return await booking_service.pickup_booking(db, booking, user)
+
+
+@router.post("/{booking_id}/return", response_model=BookingRead)
+async def return_booking(
+    booking_id: int,
+    data: ReturnRequest,
+    db: AsyncSession = Depends(get_db),
+    user: User = Depends(get_current_user),
+) -> Booking:
+    """Возврат оборудования с пересчётом за неиспользованные единицы."""
+    booking = await booking_service.get_booking(db, booking_id)
+    if booking is None:
+        raise HTTPException(status_code=404, detail="Бронь не найдена")
+    return await booking_service.return_booking(
+        db,
+        booking,
+        user,
+        damage_reported=data.damage_reported,
+        description=data.description,
+    )
+
+
+@router.post("/{booking_id}/no-show", response_model=BookingRead)
+async def mark_no_show(
+    booking_id: int,
+    db: AsyncSession = Depends(get_db),
+    user: User = Depends(get_current_user),
+) -> Booking:
+    """Фиксация неявки клиента. Доступна после адаптивного окна ожидания."""
+    booking = await booking_service.get_booking(db, booking_id)
+    if booking is None:
+        raise HTTPException(status_code=404, detail="Бронь не найдена")
+    return await booking_service.mark_no_show(db, booking, user)
+
+
+@router.post("/{booking_id}/no-show/revoke", response_model=BookingRead)
+async def revoke_no_show(
+    booking_id: int,
+    db: AsyncSession = Depends(get_db),
+    user: User = Depends(get_current_user),
+) -> Booking:
+    """Снятие неявки арендодателем в течение часа."""
+    booking = await booking_service.get_booking(db, booking_id)
+    if booking is None:
+        raise HTTPException(status_code=404, detail="Бронь не найдена")
+    return await booking_service.revoke_no_show(db, booking, user)
