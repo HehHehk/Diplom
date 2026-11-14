@@ -84,6 +84,15 @@ uv run uvicorn app.main:app --reload
 | GET | `/admin/disputes` | админ | очередь споров |
 | GET | `/admin/disputes/{id}` | админ | карточка спора |
 | POST | `/admin/disputes/{id}/resolve` | админ | решение с суммами и виновной стороной |
+| GET | `/admin/users` | админ | список пользователей, поиск и фильтр по роли |
+| PATCH | `/admin/users/{id}` | админ | роль, блокировка, метка нарушителя, предмодерация |
+| GET | `/admin/stats` | админ | сводка по сервису |
+| GET | `/owner/equipment` | арендодатель | свои позиции |
+| POST | `/owner/equipment` | арендодатель | создание своей позиции |
+| PATCH | `/owner/equipment/{id}` | арендодатель | редактирование своей позиции |
+| DELETE | `/owner/equipment/{id}` | арендодатель | скрытие позиции (запрещено при активных бронях) |
+| GET | `/owner/bookings` | арендодатель | брони по своим позициям |
+| GET | `/owner/stats` | арендодатель | статистика: позиции, брони, выручка, споры |
 | GET | `/health` | все | проверка API и БД |
 
 Параметры каталога: `q`, `category`, `brand`, `min_price`, `max_price`,

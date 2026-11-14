@@ -6,7 +6,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy import text
 
-from app.api.routes import admin, auth, bookings, equipment
+from app.api.routes import admin, auth, bookings, equipment, owner
 from app.core.config import settings
 from app.db.session import SessionLocal, engine
 from app.services import booking_service, dispute_service
@@ -63,6 +63,7 @@ def create_app() -> FastAPI:
     app.include_router(equipment.router)
     app.include_router(bookings.router)
     app.include_router(admin.router)
+    app.include_router(owner.router)
 
     @app.get("/health", tags=["system"])
     async def health() -> dict[str, str]:

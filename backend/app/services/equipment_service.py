@@ -23,6 +23,7 @@ async def list_equipment(
     brand: str | None = None,
     min_price: Decimal | None = None,
     max_price: Decimal | None = None,
+    owner_id: int | None = None,
     include_inactive: bool = False,
     sort: str = "newest",
     limit: int = 20,
@@ -49,6 +50,8 @@ async def list_equipment(
         filters.append(Equipment.price_per_day >= min_price)
     if max_price is not None:
         filters.append(Equipment.price_per_day <= max_price)
+    if owner_id is not None:
+        filters.append(Equipment.owner_id == owner_id)
 
     total = await db.scalar(select(func.count()).select_from(Equipment).where(*filters)) or 0
 
