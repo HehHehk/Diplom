@@ -2,7 +2,7 @@ import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Col, Empty, Input, Pagination, Row, Select, Space, Spin, Typography } from "antd";
 import { api } from "../api/client";
-import type { Equipment, Page } from "../api/types";
+import type { Category, Equipment, Page } from "../api/types";
 import EquipmentCard from "../components/EquipmentCard";
 import EquipmentRail from "../components/EquipmentRail";
 
@@ -16,7 +16,7 @@ export default function CatalogPage() {
 
   const { data: categories } = useQuery({
     queryKey: ["categories"],
-    queryFn: async () => (await api.get<string[]>("/equipment/categories")).data,
+    queryFn: async () => (await api.get<Category[]>("/categories")).data,
   });
 
   const { data, isLoading } = useQuery({
@@ -64,7 +64,7 @@ export default function CatalogPage() {
             setCategory(value);
             setPage(1);
           }}
-          options={(categories ?? []).map((item) => ({ value: item, label: item }))}
+          options={(categories ?? []).map((item) => ({ value: item.name, label: item.name }))}
         />
         <Select
           value={sort}

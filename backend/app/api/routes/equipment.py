@@ -181,6 +181,7 @@ async def create_equipment(
         owner_id = admin.id
     item = Equipment(**payload, owner_id=owner_id)
     equipment_service.validate_state(item)
+    await equipment_service.ensure_category(db, item.category)
     db.add(item)
     await db.commit()
     await db.refresh(item)
@@ -212,6 +213,7 @@ async def update_equipment(
         setattr(item, field, value)
 
     equipment_service.validate_state(item)
+    await equipment_service.ensure_category(db, item.category)
 
     await db.commit()
     await db.refresh(item)

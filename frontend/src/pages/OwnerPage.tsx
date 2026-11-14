@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   App,
@@ -11,6 +11,7 @@ import {
   Modal,
   Popconfirm,
   Row,
+  Segmented,
   Select,
   Space,
   Statistic,
@@ -24,17 +25,43 @@ import type { TableProps } from "antd";
 import dayjs from "dayjs";
 import { api, apiError } from "../api/client";
 import { money } from "../format";
-import type { Booking, Equipment, OwnerStats, Page } from "../api/types";
+import type { Booking, Category, Equipment, OwnerStats, Page } from "../api/types";
 
-const standardHours = {
-  mon: [["09:00", "20:00"]],
-  tue: [["09:00", "20:00"]],
-  wed: [["09:00", "20:00"]],
-  thu: [["09:00", "20:00"]],
-  fri: [["09:00", "20:00"]],
-  sat: [["10:00", "18:00"]],
-  sun: [],
-};
+const WEEKDAYS = [
+  { key: "mon", label: "Пн" },
+  { key: "tue", label: "Вт" },
+  { key: "wed", label: "Ср" },
+  { key: "thu", label: "Чт" },
+  { key: "fri", label: "Пт" },
+  { key: "sat", label: "Сб" },
+  { key: "sun", label: "Вс" },
+] as const;
+
+const TIME_OPTIONS = Array.from({ length: 48 }, (_, index) => {
+  const minutes = index * 30;
+  const value = `${String(Math.floor(minutes / 60)).padStart(2, "0")}:${String(
+    minutes % 60,
+  ).padStart(2, "0")}`;
+  return { value, label: value };
+});
+
+interface DaySchedule {
+  enabled: boolean;
+  open: string;
+  close: string;
+}
+
+function defaultSchedule(): Record<string, DaySchedule> {
+  return {
+    mon: { enabled: true, open: "09:00", close: "20:00" },
+    tue: { enabled: true, open: "09:00", close: "20:00" },
+    wed: { enabled: true, open: "09:00", close: "20:00" },
+    thu: { enabled: true, open: "09:00", close: "20:00" },
+    fri: { enabled: true, open: "09:00", close: "20:00" },
+    sat: { enabled: true, open: "10:00", close: "18:00" },
+    sun: { enabled: false, open: "10:00", close: "18:00" },
+  };
+}
 
 const statusLabel: Record<Booking["status"], string> = {
   confirmed: "Подтверждена",
@@ -53,11 +80,38 @@ export default function OwnerPage() {
   const [editing, setEditing] = useState<Equipment | null>(null);
   const [equipmentModal, setEquipmentModal] = useState(false);
   const [returning, setReturning] = useState<Booking | null>(null);
+  const [scheduleMode, setScheduleMode] = useState<"always" | "schedule">("schedule");
+  const [schedule, setSchedule] = useState<Record<string, DaySchedule>>(defaultSchedule);
+  const [newCategory, setNewCategory] = useState("");
+  const [pendingCategory, setPendingCategory] = useState<string | null>(null);
 
   const { data: stats } = useQuery({
     queryKey: ["owner-stats"],
     queryFn: async () => (await api.get<OwnerStats>("/owner/stats")).data,
   });
+
+  const { data: categories } = useQuery({
+    queryKey: ["categories"],
+    queryFn: async () => (await api.get<Category[]>("/categories")).data,
+  });
+
+  const createCategory = useMutation({
+    mutationFn: async (name: string) => (await api.post<Category>("/categories", { name })).data,
+    onSuccess: (category) => {
+      message.success("Категория добавлена");
+      setNewCategory("");
+      setPendingCategory(category.name);
+      void queryClient.invalidateQueries({ queryKey: ["categories"] });
+    },
+    onError: (error) => message.error(apiError(error)),
+  });
+
+  useEffect(() => {
+    if (!pendingCategory) return;
+    if (!categories?.some((category) => category.name === pendingCategory)) return;
+    equipmentForm.setFieldsValue({ category: pendingCategory });
+    setPendingCategory(null);
+  }, [pendingCategory, categories, equipmentForm]);
 
   const { data: equipment, isLoading: equipmentLoading } = useQuery({
     queryKey: ["owner-equipment"],
@@ -75,15 +129,30 @@ export default function OwnerPage() {
     void queryClient.invalidateQueries({ queryKey: ["owner-stats"] });
   };
 
+  const buildWorkingHours = () => {
+    if (scheduleMode === "always") return null;
+    const result: Record<string, string[][]> = {};
+    for (const day of WEEKDAYS) {
+      const value = schedule[day.key];
+      result[day.key] = value.enabled ? [[value.open, value.close]] : [];
+    }
+    return result;
+  };
+
+  const validateSchedule = (): string | null => {
+    if (scheduleMode === "always") return null;
+    for (const day of WEEKDAYS) {
+      const value = schedule[day.key];
+      if (value.enabled && value.open >= value.close) {
+        return `В дне «${day.label}» открытие должно быть раньше закрытия`;
+      }
+    }
+    return null;
+  };
+
   const saveEquipment = useMutation({
     mutationFn: async (values: Record<string, unknown>) => {
-      const payload = { ...values };
-      const mode = payload.working_mode;
-      const raw = payload.working_hours_json;
-      delete payload.working_mode;
-      delete payload.working_hours_json;
-      payload.working_hours =
-        mode === "always" ? null : mode === "standard" ? standardHours : JSON.parse(String(raw || "{}"));
+      const payload = { ...values, working_hours: buildWorkingHours() };
       if (editing) {
         return (await api.patch(`/owner/equipment/${editing.id}`, payload)).data;
       }
@@ -98,6 +167,15 @@ export default function OwnerPage() {
     },
     onError: (error) => message.error(apiError(error)),
   });
+
+  const submitEquipment = () => {
+    const error = validateSchedule();
+    if (error) {
+      message.error(error);
+      return;
+    }
+    equipmentForm.submit();
+  };
 
   const deleteEquipment = useMutation({
     mutationFn: async (id: number) => api.delete(`/owner/equipment/${id}`),
@@ -139,27 +217,42 @@ export default function OwnerPage() {
       quantity: 1,
       buffer_minutes: 30,
       lead_time_minutes: 30,
-      working_mode: "standard",
     });
+    setScheduleMode("schedule");
+    setSchedule(defaultSchedule());
     setEquipmentModal(true);
   };
 
   const openEdit = (item: Equipment) => {
     setEditing(item);
-    const mode =
-      item.working_hours === null
-        ? "always"
-        : JSON.stringify(item.working_hours) === JSON.stringify(standardHours)
-          ? "standard"
-          : "custom";
+    const hours = item.working_hours as Record<string, string[][]> | null;
+    if (!hours) {
+      setScheduleMode("always");
+      setSchedule(defaultSchedule());
+    } else {
+      setScheduleMode("schedule");
+      const next = defaultSchedule();
+      for (const day of WEEKDAYS) {
+        const intervals = hours[day.key] ?? [];
+        next[day.key] = intervals.length
+          ? { enabled: true, open: intervals[0][0], close: intervals[0][1] }
+          : { ...next[day.key], enabled: false };
+      }
+      setSchedule(next);
+    }
     equipmentForm.setFieldsValue({
       ...item,
       price_per_hour: item.price_per_hour ? Number(item.price_per_hour) : null,
       price_per_day: item.price_per_day ? Number(item.price_per_day) : null,
-      working_mode: mode,
-      working_hours_json: mode === "custom" ? JSON.stringify(item.working_hours, null, 2) : "",
     });
     setEquipmentModal(true);
+  };
+
+  const updateDay = (key: string, patch: Partial<DaySchedule>) => {
+    setSchedule((previous) => ({
+      ...previous,
+      [key]: { ...previous[key], ...patch },
+    }));
   };
 
   const equipmentColumns: TableProps<Equipment>["columns"] = [
@@ -325,7 +418,7 @@ export default function OwnerPage() {
         open={equipmentModal}
         title={editing ? "Редактирование позиции" : "Новая позиция"}
         onCancel={() => setEquipmentModal(false)}
-        onOk={() => equipmentForm.submit()}
+        onOk={submitEquipment}
         confirmLoading={saveEquipment.isPending}
         width={720}
         okText="Сохранить"
@@ -339,8 +432,30 @@ export default function OwnerPage() {
             </Col>
             <Col span={12}>
               <Form.Item name="category" label="Категория" rules={[{ required: true }]}>
-                <Input />
+                <Select
+                  showSearch
+                  optionFilterProp="label"
+                  placeholder="Выберите категорию"
+                  options={(categories ?? []).map((category) => ({
+                    value: category.name,
+                    label: category.name,
+                  }))}
+                />
               </Form.Item>
+              <Space.Compact style={{ width: "100%", marginTop: -12, marginBottom: 12 }}>
+                <Input
+                  placeholder="Новая категория"
+                  value={newCategory}
+                  onChange={(event) => setNewCategory(event.target.value)}
+                />
+                <Button
+                  onClick={() => createCategory.mutate(newCategory.trim())}
+                  disabled={!newCategory.trim()}
+                  loading={createCategory.isPending}
+                >
+                  Добавить
+                </Button>
+              </Space.Compact>
             </Col>
             <Col span={12}>
               <Form.Item name="brand" label="Бренд">
@@ -402,31 +517,48 @@ export default function OwnerPage() {
                 <Input.TextArea rows={2} />
               </Form.Item>
             </Col>
-            <Col span={12}>
-              <Form.Item name="working_mode" label="Режим выдачи">
-                <Select
+            <Col span={24}>
+              <Form.Item label="Режим выдачи">
+                <Segmented
+                  value={scheduleMode}
+                  onChange={(value) => setScheduleMode(value as "always" | "schedule")}
                   options={[
+                    { value: "schedule", label: "По графику" },
                     { value: "always", label: "Круглосуточно" },
-                    { value: "standard", label: "Пн–Пт 9:00–20:00, Сб 10:00–18:00" },
-                    { value: "custom", label: "Свой график (JSON)" },
                   ]}
                 />
               </Form.Item>
             </Col>
-            <Col span={12}>
-              <Form.Item
-                noStyle
-                shouldUpdate={(prev, next) => prev.working_mode !== next.working_mode}
-              >
-                {({ getFieldValue }) =>
-                  getFieldValue("working_mode") === "custom" ? (
-                    <Form.Item name="working_hours_json" label="График JSON">
-                      <Input.TextArea rows={3} placeholder='{"mon": [["09:00","20:00"]]}' />
-                    </Form.Item>
-                  ) : null
-                }
-              </Form.Item>
-            </Col>
+            {scheduleMode === "schedule" ? (
+              <Col span={24}>
+                <div className="schedule-editor">
+                  {WEEKDAYS.map((day) => (
+                    <div className="schedule-row" key={day.key}>
+                      <Switch
+                        checked={schedule[day.key].enabled}
+                        onChange={(checked) => updateDay(day.key, { enabled: checked })}
+                      />
+                      <span className="schedule-day">{day.label}</span>
+                      <Select
+                        value={schedule[day.key].open}
+                        options={TIME_OPTIONS}
+                        disabled={!schedule[day.key].enabled}
+                        onChange={(value) => updateDay(day.key, { open: value })}
+                        style={{ width: 100 }}
+                      />
+                      <span>—</span>
+                      <Select
+                        value={schedule[day.key].close}
+                        options={TIME_OPTIONS}
+                        disabled={!schedule[day.key].enabled}
+                        onChange={(value) => updateDay(day.key, { close: value })}
+                        style={{ width: 100 }}
+                      />
+                    </div>
+                  ))}
+                </div>
+              </Col>
+            ) : null}
           </Row>
         </Form>
       </Modal>

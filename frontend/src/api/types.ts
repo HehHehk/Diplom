@@ -45,6 +45,11 @@ export interface Page<T> {
   pages: number;
 }
 
+export interface Category {
+  id: number;
+  name: string;
+}
+
 export interface Booking {
   id: number;
   user_id: number;

@@ -232,6 +232,35 @@ body {
   color: #8a93a8;
 }
 
+.schedule-editor {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 12px;
+  border: 1px solid #e6eaf2;
+  border-radius: 10px;
+  background: #fafbff;
+  margin-bottom: 12px;
+}
+
+.schedule-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.schedule-day {
+  width: 28px;
+  color: #5b6478;
+  font-weight: 600;
+}
+
+@media (max-width: 768px) {
+  .schedule-row {
+    flex-wrap: wrap;
+  }
+}
+
 .page-loader {
   display: grid;
   place-items: center;

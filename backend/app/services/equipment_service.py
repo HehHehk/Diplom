@@ -8,6 +8,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import settings
 from app.models.booking import Booking
+from app.models.category import Category
 from app.models.enums import BookingStatus, InteractionType
 from app.models.equipment import Equipment
 from app.models.interaction import Interaction
@@ -133,6 +134,16 @@ async def has_active_bookings(db: AsyncSession, equipment_id: int) -> bool:
         )
     )
     return bool(count)
+
+
+async def ensure_category(db: AsyncSession, name: str) -> None:
+    """Регистрирует категорию, если её ещё нет в справочнике."""
+    clean = name.strip()
+    if not clean:
+        return
+    exists = await db.scalar(select(Category.id).where(Category.name == clean))
+    if exists is None:
+        db.add(Category(name=clean))
 
 
 async def resolve_owner(db: AsyncSession, owner_id: int) -> User:
