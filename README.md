@@ -70,6 +70,7 @@ uv run uvicorn app.main:app --reload
 | GET | `/equipment/{id}` | все | карточка + запись просмотра в `interactions` |
 | GET | `/equipment/{id}/availability` | все | занятые интервалы для календаря |
 | GET | `/equipment/{id}/recommendations` | все | похожие позиции (content-based) |
+| GET | `/equipment/{id}/load-forecast` | все | прогноз загрузки по дням и часам |
 | GET | `/equipment/popular` | все | популярное за 30 дней |
 | POST | `/equipment` | админ | создание позиции |
 | PATCH | `/equipment/{id}` | админ / владелец | редактирование |

@@ -20,7 +20,8 @@ from app.schemas.equipment import (
     EquipmentUpdate,
     RecommendationList,
 )
-from app.services import booking_service, equipment_service, recommender
+from app.schemas.forecast import LoadForecast
+from app.services import booking_service, equipment_service, forecast_service, recommender
 
 router = APIRouter(prefix="/equipment", tags=["equipment"])
 
@@ -151,6 +152,19 @@ async def recommendations(
         strategy=strategy,
         items=[_recommendation(entry, score) for entry, score in pairs],
     )
+
+
+@router.get("/{equipment_id}/load-forecast", response_model=LoadForecast)
+async def load_forecast(
+    equipment_id: int,
+    days: int = Query(default=90, ge=7, le=365),
+    db: AsyncSession = Depends(get_db),
+) -> LoadForecast:
+    """Прогноз загрузки по фактическим выдачам: дни недели и часы."""
+    item = await equipment_service.get_equipment(db, equipment_id)
+    if item is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Оборудование не найдено")
+    return LoadForecast(**await forecast_service.load_forecast(db, item, days))
 
 
 @router.post("", response_model=EquipmentRead, status_code=status.HTTP_201_CREATED)
