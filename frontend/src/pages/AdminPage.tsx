@@ -208,6 +208,7 @@ export default function AdminPage() {
                   columns={disputeColumns}
                   pagination={false}
                   scroll={{ x: 1000 }}
+                  locale={{ emptyText: "Очередь споров пуста" }}
                 />
               </Card>
             ),
@@ -224,6 +225,7 @@ export default function AdminPage() {
                   columns={userColumns}
                   pagination={false}
                   scroll={{ x: 1000 }}
+                  locale={{ emptyText: "Пользователи не найдены" }}
                 />
               </Card>
             ),

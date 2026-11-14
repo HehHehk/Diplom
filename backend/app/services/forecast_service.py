@@ -8,6 +8,15 @@ from app.models.enums import BookingStatus
 from app.models.equipment import Equipment
 
 WEEKDAY_LABELS = ("Пн", "Вт", "Ср", "Чт", "Пт", "Сб", "Вс")
+WEEKDAY_FULL = (
+    "понедельник",
+    "вторник",
+    "среда",
+    "четверг",
+    "пятница",
+    "суббота",
+    "воскресенье",
+)
 DEFAULT_PERIOD_DAYS = 90
 
 
@@ -77,7 +86,7 @@ async def load_forecast(
         best_hours = sorted(ranked_hours)
         hours_text = ", ".join(f"{hour_value:02d}:00" for hour_value in best_hours)
         recommendation = (
-            f"Чаще всего берут в {best_weekday.lower()}. "
+            f"Чаще всего берут в {WEEKDAY_FULL[best_index]}. "
             f"Удобные часы выдачи: {hours_text} ({equipment.timezone})."
         )
 

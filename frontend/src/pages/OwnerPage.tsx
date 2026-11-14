@@ -291,6 +291,7 @@ export default function OwnerPage() {
                   columns={equipmentColumns}
                   pagination={false}
                   scroll={{ x: 800 }}
+                  locale={{ emptyText: "Добавьте первую позицию — она сразу появится в каталоге" }}
                 />
               </Space>
             ),
@@ -306,6 +307,7 @@ export default function OwnerPage() {
                 columns={bookingColumns}
                 pagination={false}
                 scroll={{ x: 900 }}
+                locale={{ emptyText: "Броней пока нет" }}
               />
             ),
           },

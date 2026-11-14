@@ -211,6 +211,12 @@ body {
   width: min(420px, 100%);
 }
 
+.page-loader {
+  display: grid;
+  place-items: center;
+  min-height: 60vh;
+}
+
 @media (max-width: 768px) {
   .app-header {
     flex-wrap: wrap;
@@ -232,4 +238,22 @@ body {
     width: calc(100% - 24px);
     margin-top: 16px;
   }
+
+  .ant-statistic-content {
+    font-size: 20px !important;
+  }
+
+  .ant-table {
+    font-size: 12px;
+  }
+
+  .ant-card-body {
+    padding: 14px;
+  }
+
+  .detail-cover {
+    height: 150px;
+    font-size: 18px;
+  }
 }
+

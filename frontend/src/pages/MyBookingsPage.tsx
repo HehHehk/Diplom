@@ -156,6 +156,7 @@ export default function MyBookingsPage() {
         columns={columns}
         pagination={false}
         scroll={{ x: 900 }}
+        locale={{ emptyText: "У вас пока нет броней — выберите оборудование в каталоге" }}
       />
 
       <Modal

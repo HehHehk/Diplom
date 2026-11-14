@@ -53,7 +53,7 @@ async def test_forecast_counts_weekdays_and_hours(client: AsyncClient, db_sessio
     assert monday_stat["count"] == 2
     assert data["best_weekday"] == "Пн"
     assert data["best_hours"] == [10, 11, 12]
-    assert "пн" in data["recommendation"]
+    assert "понедельник" in data["recommendation"]
 
 
 @pytest.mark.asyncio
