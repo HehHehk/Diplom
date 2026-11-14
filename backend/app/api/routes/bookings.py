@@ -261,3 +261,19 @@ async def appeal_decision(
 
     await dispute_service.appeal_booking(db, booking, user, data.description)
     return await booking_service.get_booking(db, booking_id)  # type: ignore[return-value]
+
+
+@router.post("/{booking_id}/early-return", response_model=BookingRead)
+async def early_return(
+    booking_id: int,
+    data: DisputeCreate,
+    db: AsyncSession = Depends(get_db),
+    user: User = Depends(get_current_user),
+) -> Booking:
+    """Клиент сообщает о поломке или ЧП во время аренды. Решение принимает админ."""
+    booking = await booking_service.get_booking(db, booking_id)
+    if booking is None:
+        raise HTTPException(status_code=404, detail="Бронь не найдена")
+    return await booking_service.request_early_return(
+        db, booking, user, data.reason, data.description
+    )

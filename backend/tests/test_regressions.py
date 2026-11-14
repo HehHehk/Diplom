@@ -351,3 +351,192 @@ async def test_patch_min_greater_than_max(client: AsyncClient, db_session: Async
         f"/equipment/{item.id}", json={"min_hours": 30}, headers=admin_headers
     )
     assert response.status_code == 422
+
+
+@pytest.mark.asyncio
+async def test_client_early_return_opens_dispute(client: AsyncClient, db_session: AsyncSession):
+    client_headers = await auth_headers(client, db_session)
+    admin_headers = await auth_headers(client, db_session, admin=True)
+    item = await create_equipment(db_session, price_per_hour="100.00")
+    booking = await make_booking(
+        client, client_headers, item.id, now() + timedelta(hours=1), now() + timedelta(hours=5)
+    )
+    await client.post(f"/bookings/{booking['id']}/pickup", headers=admin_headers)
+
+    response = await client.post(
+        f"/bookings/{booking['id']}/early-return",
+        json={"reason": "equipment_broken", "description": LONG_TEXT},
+        headers=client_headers,
+    )
+    assert response.status_code == 200, response.text
+    data = response.json()
+    assert data["status"] == "terminated"
+    assert data["dispute_status"] == "pending"
+    assert data["refund_amount"] == "0.00"
+
+
+@pytest.mark.asyncio
+async def test_early_return_before_pickup_conflict(client: AsyncClient, db_session: AsyncSession):
+    headers = await auth_headers(client, db_session)
+    item = await create_equipment(db_session, price_per_hour="100.00")
+    booking = await make_booking(
+        client, headers, item.id, now() + timedelta(hours=1), now() + timedelta(hours=5)
+    )
+    response = await client.post(
+        f"/bookings/{booking['id']}/early-return",
+        json={"reason": "equipment_broken", "description": LONG_TEXT},
+        headers=headers,
+    )
+    assert response.status_code == 409
+
+
+@pytest.mark.asyncio
+async def test_owner_role_booking_cancelled_as_client(
+    client: AsyncClient, db_session: AsyncSession
+):
+    owner_user = await create_user(
+        db_session, email="rentingowner@example.com", role=UserRole.owner
+    )
+    item = await create_equipment(db_session, price_per_hour="100.00")
+    token = await login(client, owner_user.email, "secret123")
+    headers = {"Authorization": f"Bearer {token}"}
+    booking = await make_booking(
+        client, headers, item.id, now() + timedelta(hours=1), now() + timedelta(hours=5)
+    )
+    response = await client.post(
+        f"/bookings/{booking['id']}/cancel",
+        json={"reason": "cannot_use", "description": LONG_TEXT},
+        headers=headers,
+    )
+    assert response.status_code == 200, response.text
+    assert response.json()["cancelled_by"] == "user"
+    assert response.json()["compensation_amount"] == "0.00"
+
+
+@pytest.mark.asyncio
+async def test_owner_id_must_exist_and_be_owner(client: AsyncClient, db_session: AsyncSession):
+    admin_headers = await auth_headers(client, db_session, admin=True)
+    payload = {
+        "title": "Позиция",
+        "category": "Инструмент",
+        "price_per_hour": "100.00",
+        "owner_id": 999999,
+    }
+    missing = await client.post("/equipment", json=payload, headers=admin_headers)
+    assert missing.status_code == 422
+
+    client_user = await create_user(db_session, email="plain@example.com")
+    payload["owner_id"] = client_user.id
+    wrong_role = await client.post("/equipment", json=payload, headers=admin_headers)
+    assert wrong_role.status_code == 422
+
+
+@pytest.mark.asyncio
+async def test_abuser_has_single_dispute_limit(client: AsyncClient, db_session: AsyncSession):
+    headers = await auth_headers(client, db_session)
+    user = await db_session.scalar(select(User).where(User.email == "user@example.com"))
+    user.is_abuser = True
+    await db_session.commit()
+
+    first = await create_equipment(db_session, title="A", price_per_hour="100.00")
+    second = await create_equipment(db_session, title="B", price_per_hour="100.00")
+
+    booking_one = await make_booking(
+        client, headers, first.id, now() + timedelta(hours=1), now() + timedelta(hours=4)
+    )
+    assert (
+        await client.post(
+            f"/bookings/{booking_one['id']}/cancel",
+            json={"reason": "emergency", "description": LONG_TEXT},
+            headers=headers,
+        )
+    ).status_code == 200
+
+    booking_two = await make_booking(
+        client, headers, second.id, now() + timedelta(hours=1), now() + timedelta(hours=4)
+    )
+    second_dispute = await client.post(
+        f"/bookings/{booking_two['id']}/cancel",
+        json={"reason": "emergency", "description": LONG_TEXT},
+        headers=headers,
+    )
+    assert second_dispute.status_code == 429
+
+
+@pytest.mark.asyncio
+async def test_admin_delete_blocked_by_active_booking(
+    client: AsyncClient, db_session: AsyncSession
+):
+    client_headers = await auth_headers(client, db_session)
+    admin_headers = await auth_headers(client, db_session, admin=True)
+    item = await create_equipment(db_session, price_per_hour="100.00")
+    await make_booking(
+        client, client_headers, item.id, now() + timedelta(hours=1), now() + timedelta(hours=4)
+    )
+    response = await client.delete(f"/equipment/{item.id}", headers=admin_headers)
+    assert response.status_code == 409
+
+
+@pytest.mark.asyncio
+async def test_availability_includes_buffer(client: AsyncClient, db_session: AsyncSession):
+    headers = await auth_headers(client, db_session)
+    item = await create_equipment(db_session, price_per_hour="100.00", buffer_minutes=30)
+    start, end = now() + timedelta(hours=2), now() + timedelta(hours=5)
+    booking = await make_booking(client, headers, item.id, start, end)
+
+    response = await client.get(
+        f"/equipment/{item.id}/availability",
+        params={
+            "from": (now() + timedelta(hours=1)).isoformat(),
+            "to": (now() + timedelta(hours=6)).isoformat(),
+        },
+    )
+    busy = response.json()["busy"][0]
+    assert datetime.fromisoformat(busy["start_at"]) == datetime.fromisoformat(
+        booking["start_at"]
+    ) - timedelta(minutes=30)
+    assert datetime.fromisoformat(busy["end_at"]) == datetime.fromisoformat(
+        booking["end_at"]
+    ) + timedelta(minutes=30)
+
+
+@pytest.mark.asyncio
+async def test_late_return_charges_overdue(client: AsyncClient, db_session: AsyncSession):
+    headers = await auth_headers(client, db_session)
+    admin_headers = await auth_headers(client, db_session, admin=True)
+    item = await create_equipment(db_session, price_per_hour="100.00")
+    booking = await make_booking(
+        client, headers, item.id, now() + timedelta(hours=1), now() + timedelta(hours=5)
+    )
+    await client.post(f"/bookings/{booking['id']}/pickup", headers=admin_headers)
+    await patch_booking(
+        db_session,
+        booking["id"],
+        start_at=now() - timedelta(hours=5),
+        end_at=now() - timedelta(minutes=59),
+        picked_up_at=now() - timedelta(hours=5),
+    )
+    response = await client.post(
+        f"/bookings/{booking['id']}/return", json={}, headers=admin_headers
+    )
+    data = response.json()
+    assert data["status"] == "completed"
+    assert data["penalty_amount"] == "100.00"
+    assert data["refund_amount"] == "0.00"
+
+
+@pytest.mark.asyncio
+async def test_scheduler_handles_missing_deadline(client: AsyncClient, db_session: AsyncSession):
+    headers = await auth_headers(client, db_session)
+    item = await create_equipment(db_session, price_per_hour="100.00")
+    booking = await make_booking(
+        client, headers, item.id, now() + timedelta(hours=1), now() + timedelta(hours=4)
+    )
+    await patch_booking(
+        db_session,
+        booking["id"],
+        start_at=now() - timedelta(hours=2),
+        end_at=now() + timedelta(hours=2),
+        no_show_deadline=None,
+    )
+    assert await booking_service.apply_due_no_shows(db_session) == 1

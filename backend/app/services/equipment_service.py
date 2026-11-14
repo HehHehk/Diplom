@@ -6,9 +6,11 @@ from sqlalchemy import func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import settings
-from app.models.enums import InteractionType
+from app.models.booking import Booking
+from app.models.enums import BookingStatus, InteractionType
 from app.models.equipment import Equipment
 from app.models.interaction import Interaction
+from app.models.user import User
 
 SORT_OPTIONS = {
     "newest": Equipment.created_at.desc(),
@@ -103,6 +105,28 @@ async def log_view(db: AsyncSession, equipment_id: int, user_id: int | None) -> 
         )
     )
     await db.commit()
+
+
+async def has_active_bookings(db: AsyncSession, equipment_id: int) -> bool:
+    count = await db.scalar(
+        select(func.count())
+        .select_from(Booking)
+        .where(
+            Booking.equipment_id == equipment_id,
+            Booking.status == BookingStatus.confirmed,
+        )
+    )
+    return bool(count)
+
+
+async def resolve_owner(db: AsyncSession, owner_id: int) -> User:
+    owner = await db.get(User, owner_id)
+    if owner is None or not (owner.is_owner or owner.is_admin):
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
+            detail="Владелец должен существовать и иметь роль арендодателя",
+        )
+    return owner
 
 
 def validate_state(item: Equipment) -> None:

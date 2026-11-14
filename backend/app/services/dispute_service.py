@@ -40,6 +40,8 @@ def _reset_window(user: User, now: datetime) -> None:
 
 
 def is_premoderated(user: User) -> bool:
+    if user.moderation_mode == "premoderation":
+        return True
     if user.disputes_total_30d < settings.dispute_premoderation_min_total:
         return False
     ratio = user.disputes_rejected_30d / user.disputes_total_30d
@@ -83,11 +85,13 @@ async def open_dispute(
 
     now = utcnow()
     recent = await _recent_disputes(db, actor.id, hours=1)
-    if recent >= settings.dispute_rate_per_hour:
+    rate_limit = 1 if actor.is_abuser else settings.dispute_rate_per_hour
+    if recent >= rate_limit:
         raise _bad("Слишком много обращений, попробуйте позже", status.HTTP_429_TOO_MANY_REQUESTS)
 
     _reset_window(actor, now)
-    if actor.disputes_open >= settings.dispute_max_active:
+    active_limit = 1 if actor.is_abuser else settings.dispute_max_active
+    if actor.disputes_open >= active_limit:
         raise _bad(
             "Достигнут лимит активных споров — дождитесь решения по текущим",
             status.HTTP_429_TOO_MANY_REQUESTS,

@@ -1,4 +1,5 @@
 import math
+from datetime import timedelta
 from decimal import Decimal
 from typing import Literal
 
@@ -75,7 +76,8 @@ async def get_equipment(
     item = await equipment_service.get_equipment(db, equipment_id)
     if item is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Оборудование не найдено")
-    await equipment_service.log_view(db, item.id, user.id if user else None)
+    if user is None or (not user.is_admin and item.owner_id != user.id):
+        await equipment_service.log_view(db, item.id, user.id if user else None)
     return item
 
 
@@ -94,6 +96,7 @@ async def availability(
         raise HTTPException(status_code=422, detail="Параметр to должен быть позже from")
 
     bookings = await booking_service.busy_intervals(db, item.id, from_at, to_at)
+    buffer = timedelta(minutes=item.buffer_minutes)
     return AvailabilityResponse(
         equipment_id=item.id,
         quantity=item.quantity,
@@ -102,7 +105,11 @@ async def availability(
         from_at=from_at,
         to_at=to_at,
         busy=[
-            BusyInterval(start_at=b.start_at, end_at=b.end_at, quantity=b.quantity)
+            BusyInterval(
+                start_at=min(b.start_at, b.picked_up_at or b.start_at) - buffer,
+                end_at=b.end_at + buffer,
+                quantity=b.quantity,
+            )
             for b in bookings
         ],
     )
@@ -115,7 +122,11 @@ async def create_equipment(
     admin: User = Depends(get_current_admin),
 ) -> Equipment:
     payload = data.model_dump()
-    owner_id = payload.pop("owner_id") or admin.id
+    owner_id = payload.pop("owner_id")
+    if owner_id is not None and admin.is_admin:
+        await equipment_service.resolve_owner(db, owner_id)
+    else:
+        owner_id = admin.id
     item = Equipment(**payload, owner_id=owner_id)
     equipment_service.validate_state(item)
     db.add(item)
@@ -142,6 +153,8 @@ async def update_equipment(
     changes = data.model_dump(exclude_unset=True)
     if not user.is_admin:
         changes.pop("owner_id", None)
+    elif changes.get("owner_id") is not None:
+        await equipment_service.resolve_owner(db, changes["owner_id"])
 
     for field, value in changes.items():
         setattr(item, field, value)
@@ -166,6 +179,11 @@ async def delete_equipment(
     if not user.is_admin and item.owner_id != user.id:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN, detail="Можно удалять только свои позиции"
+        )
+    if await equipment_service.has_active_bookings(db, item.id):
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="По позиции есть активные брони — сначала завершите их",
         )
     item.is_active = False
     await db.commit()

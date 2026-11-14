@@ -56,6 +56,7 @@ uv run uvicorn app.main:app --reload
 | Администратор | `admin@example.com` | `admin12345` |
 | Арендодатель | `owner@example.com` | `owner12345` |
 | Клиент | `user@example.com` | `user12345` |
+| Клиент 2 | `client2@example.com` | `client12345` |
 
 ## API
 
@@ -81,6 +82,7 @@ uv run uvicorn app.main:app --reload
 | POST | `/bookings/{id}/no-show` | арендодатель / админ | фиксация неявки |
 | POST | `/bookings/{id}/no-show/revoke` | арендодатель / админ | снятие неявки в течение часа |
 | POST | `/bookings/{id}/appeal` | участник | оспаривание решения в течение 24 часов |
+| POST | `/bookings/{id}/early-return` | клиент | поломка/ЧП во время аренды → спор к админу |
 | GET | `/admin/disputes` | админ | очередь споров |
 | GET | `/admin/disputes/{id}` | админ | карточка спора |
 | POST | `/admin/disputes/{id}/resolve` | админ | решение с суммами и виновной стороной |

@@ -17,7 +17,7 @@ from sqlalchemy import func, select, text
 from app.core.config import settings
 from app.db.session import SessionLocal, engine
 from app.models.booking import Booking
-from app.models.enums import BillingUnit, BookingStatus, InteractionType, UserRole
+from app.models.enums import BillingUnit, BookingStatus, CancelledBy, InteractionType, UserRole
 from app.models.equipment import Equipment
 from app.models.interaction import Interaction
 from app.models.user import User
@@ -42,6 +42,12 @@ DEMO_USERS = [
         "password": "owner12345",
         "full_name": "ООО «Прокат-Сервис»",
         "role": UserRole.owner,
+    },
+    {
+        "email": "client2@example.com",
+        "password": "client12345",
+        "full_name": "Мария Смирнова",
+        "role": UserRole.user,
     },
 ]
 
@@ -480,12 +486,15 @@ async def seed(reset: bool = False) -> None:
                 session.add(user)
             users.append(user)
 
+        await session.flush()
+
         equipment: list[Equipment] = []
         admin = next(u for u in users if u.role == UserRole.admin)
-        for title, category, brand, price, quantity, specs in EQUIPMENT:
+        owner = next(u for u in users if u.role == UserRole.owner)
+        for index, (title, category, brand, price, quantity, specs) in enumerate(EQUIPMENT):
             hourly = max(50, round(price / 8 / 10) * 10)
             item = Equipment(
-                owner_id=admin.id,
+                owner_id=owner.id if index % 3 == 0 else admin.id,
                 title=title,
                 category=category,
                 brand=brand,
@@ -510,8 +519,30 @@ async def seed(reset: bool = False) -> None:
         await session.flush()
         client = next(u for u in users if u.role == UserRole.user)
 
+        slots: dict[int, list[tuple[datetime, datetime, int, int]]] = {}
+
+        def can_place(
+            item: Equipment, start: datetime, end: datetime, qty: int, renter_id: int
+        ) -> bool:
+            buffer = timedelta(minutes=item.buffer_minutes)
+            used = 0
+            for slot_start, slot_end, slot_qty, slot_user in slots.get(item.id, []):
+                if slot_start < end + buffer and slot_end > start - buffer:
+                    if slot_user == renter_id:
+                        return False
+                    used += slot_qty
+            return used + qty <= item.quantity
+
+        def place(
+            item: Equipment, start: datetime, end: datetime, qty: int, renter_id: int
+        ) -> None:
+            slots.setdefault(item.id, []).append((start, end, qty, renter_id))
+
         bookings: list[Booking] = []
-        for _ in range(140):
+        history = 0
+        attempts = 0
+        while history < 140 and attempts < 3000:
+            attempts += 1
             item = rnd.choice(equipment)
             days_ago = rnd.randint(1, 90)
             start = (now - timedelta(days=days_ago)).replace(
@@ -520,35 +551,52 @@ async def seed(reset: bool = False) -> None:
             duration_days = rnd.randint(1, 5)
             end = start + timedelta(days=duration_days)
             qty = rnd.randint(1, min(2, item.quantity))
+
+            cancelled = rnd.random() < 0.12
+            if not cancelled and not can_place(item, start, end, qty, client.id):
+                continue
+            if not cancelled:
+                place(item, start, end, qty, client.id)
+
             bookings.append(
                 Booking(
                     user_id=client.id,
                     equipment_id=item.id,
                     start_at=start,
                     end_at=end,
-                    picked_up_at=start,
-                    returned_at=end,
+                    picked_up_at=None if cancelled else start,
+                    returned_at=None if cancelled else end,
                     quantity=qty,
                     billing_unit=BillingUnit.day,
                     unit_price=item.price_per_day,
                     total_price=item.price_per_day * qty * duration_days,
-                    status=BookingStatus.cancelled
-                    if rnd.random() < 0.12
-                    else BookingStatus.completed,
+                    status=BookingStatus.cancelled if cancelled else BookingStatus.completed,
+                    cancelled_at=start - timedelta(hours=5) if cancelled else None,
+                    cancelled_by=CancelledBy.user if cancelled else None,
+                    cancellation_reason="cannot_use" if cancelled else None,
                 )
             )
+            history += 1
 
-        for _ in range(30):
+        renters = [u for u in users if u.role != UserRole.admin]
+        upcoming = 0
+        attempts = 0
+        while upcoming < 24 and attempts < 1500:
+            attempts += 1
             item = rnd.choice(equipment)
+            renter = renters[upcoming % len(renters)]
             start = (now + timedelta(days=rnd.randint(0, 20))).replace(
                 hour=rnd.randint(8, 16), minute=0, second=0, microsecond=0
             )
             duration_days = rnd.randint(1, 4)
             end = start + timedelta(days=duration_days)
             qty = rnd.randint(1, min(2, item.quantity))
+            if not can_place(item, start, end, qty, renter.id):
+                continue
+            place(item, start, end, qty, renter.id)
             bookings.append(
                 Booking(
-                    user_id=client.id,
+                    user_id=renter.id,
                     equipment_id=item.id,
                     start_at=start,
                     end_at=end,
@@ -559,6 +607,7 @@ async def seed(reset: bool = False) -> None:
                     status=BookingStatus.confirmed,
                 )
             )
+            upcoming += 1
 
         session.add_all(bookings)
         await session.flush()
@@ -596,6 +645,7 @@ async def seed(reset: bool = False) -> None:
         print("Админ: admin@example.com / admin12345")
         print("Арендодатель: owner@example.com / owner12345")
         print("Клиент: user@example.com / user12345")
+        print("Клиент 2: client2@example.com / client12345")
 
 
 def main() -> None:

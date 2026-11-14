@@ -66,7 +66,11 @@ async def create_my_equipment(
 ) -> Equipment:
     payload = data.model_dump()
     owner_id = payload.pop("owner_id")
-    item = Equipment(**payload, owner_id=owner_id if user.is_admin and owner_id else user.id)
+    if owner_id is not None and user.is_admin:
+        await equipment_service.resolve_owner(db, owner_id)
+    else:
+        owner_id = user.id
+    item = Equipment(**payload, owner_id=owner_id)
     equipment_service.validate_state(item)
     db.add(item)
     await db.commit()
@@ -90,6 +94,8 @@ async def update_my_equipment(
     changes = data.model_dump(exclude_unset=True)
     if not user.is_admin:
         changes.pop("owner_id", None)
+    elif changes.get("owner_id") is not None:
+        await equipment_service.resolve_owner(db, changes["owner_id"])
     for field, value in changes.items():
         setattr(item, field, value)
 
@@ -112,15 +118,7 @@ async def delete_my_equipment(
     if not user.is_admin and item.owner_id != user.id:
         raise HTTPException(status_code=403, detail="Можно удалять только свои позиции")
 
-    active = await db.scalar(
-        select(func.count())
-        .select_from(Booking)
-        .where(
-            Booking.equipment_id == item.id,
-            Booking.status == BookingStatus.confirmed,
-        )
-    )
-    if active:
+    if await equipment_service.has_active_bookings(db, item.id):
         raise HTTPException(
             status_code=409,
             detail="По позиции есть активные брони — сначала завершите их",

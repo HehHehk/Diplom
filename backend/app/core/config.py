@@ -38,6 +38,7 @@ class Settings(BaseSettings):
     owner_late_cancel_hours: int = 24
     owner_compensation_percent: float = 10.0
     technical_cancel_minutes: int = 20
+    late_return_grace_minutes: int = 15
     no_show_percent_of_duration: int = 25
     no_show_min_minutes: int = 15
     no_show_max_minutes: int = 120

@@ -15,16 +15,25 @@ logger = logging.getLogger("app.no_show")
 
 
 async def _no_show_worker() -> None:
-    """Периодически фиксирует неявки, у которых истекло адаптивное окно."""
+    """Периодически фиксирует неявки и закрывает споры по SLA."""
+    lock_key = 918273645
     while True:
         try:
             async with SessionLocal() as db:
-                count = await booking_service.apply_due_no_shows(db)
-                if count:
-                    logger.info("Зафиксировано неявок: %s", count)
-                resolved = await dispute_service.apply_dispute_sla(db)
-                if resolved:
-                    logger.info("Споров закрыто по SLA: %s", resolved)
+                locked = await db.scalar(text(f"SELECT pg_try_advisory_lock({lock_key})"))
+                if not locked:
+                    await asyncio.sleep(settings.no_show_scheduler_interval_seconds)
+                    continue
+                try:
+                    count = await booking_service.apply_due_no_shows(db)
+                    if count:
+                        logger.info("Зафиксировано неявок: %s", count)
+                    resolved = await dispute_service.apply_dispute_sla(db)
+                    if resolved:
+                        logger.info("Споров закрыто по SLA: %s", resolved)
+                finally:
+                    await db.execute(text(f"SELECT pg_advisory_unlock({lock_key})"))
+                    await db.commit()
         except Exception:
             logger.exception("Ошибка обработки неявок")
         await asyncio.sleep(settings.no_show_scheduler_interval_seconds)

@@ -4,7 +4,7 @@ from math import ceil
 from zoneinfo import ZoneInfo
 
 from fastapi import HTTPException, status
-from sqlalchemy import func, select
+from sqlalchemy import and_, func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import settings
@@ -372,8 +372,10 @@ async def cancel_booking(
     cancelled_by = (
         CancelledBy.admin
         if actor.is_admin
+        else CancelledBy.user
+        if actor.id == booking.user_id
         else CancelledBy.owner
-        if actor.is_owner
+        if booking.equipment.owner_id == actor.id
         else CancelledBy.user
     )
 
@@ -533,9 +535,20 @@ async def return_booking(
     refund = (booking.unit_price * refund_units * booking.quantity).quantize(Decimal("0.01"))
 
     early = now < booking.end_at
+    late = now > booking.end_at + timedelta(minutes=settings.late_return_grace_minutes)
+    late_penalty = Decimal("0.00")
+    if late:
+        overdue_units = calculate_units(booking.end_at, now, booking.billing_unit)
+        late_penalty = (booking.unit_price * overdue_units * booking.quantity).quantize(
+            Decimal("0.01")
+        )
+        refund_units = 0
+        refund = Decimal("0.00")
+
     booking.returned_at = now
     booking.status = BookingStatus.terminated if early else BookingStatus.completed
     booking.appeal_deadline = now + timedelta(hours=settings.appeal_window_hours)
+    booking.penalty_amount = late_penalty
 
     if damage_reported:
         booking.refund_amount = Decimal("0.00")
@@ -553,7 +566,6 @@ async def return_booking(
         )
     else:
         booking.refund_amount = refund
-
     db.add(
         BookingEvent(
             booking_id=booking.id,
@@ -679,10 +691,90 @@ async def apply_due_no_shows(db: AsyncSession) -> int:
     stmt = select(Booking).where(
         Booking.status == BookingStatus.confirmed,
         Booking.picked_up_at.is_(None),
-        Booking.no_show_deadline.is_not(None),
-        Booking.no_show_deadline <= now,
+        Booking.no_show_cancelled_at.is_(None),
+        or_(
+            and_(
+                Booking.no_show_deadline.is_not(None),
+                Booking.no_show_deadline <= now,
+            ),
+            and_(
+                Booking.no_show_deadline.is_(None),
+                Booking.start_at <= now - timedelta(minutes=settings.no_show_min_minutes),
+            ),
+        ),
     )
     bookings = list((await db.scalars(stmt)).all())
+    processed = 0
     for booking in bookings:
+        deadline = booking.no_show_deadline or no_show_deadline(booking.start_at, booking.end_at)
+        if deadline > now:
+            continue
         await mark_no_show(db, booking, None, now)
-    return len(bookings)
+        processed += 1
+    return processed
+
+
+EARLY_RETURN_REASONS = {"equipment_broken", "equipment_damaged", "emergency", "other"}
+
+
+async def request_early_return(
+    db: AsyncSession,
+    booking: Booking,
+    actor: User,
+    reason: str,
+    description: str | None,
+) -> Booking:
+    """Клиент сообщает о поломке или ЧП во время аренды — решение за админом."""
+    if booking.user_id != actor.id and not actor.is_admin:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Досрочный возврат запрашивает арендатор",
+        )
+    if reason not in EARLY_RETURN_REASONS:
+        raise _bad_request("Недопустимая причина досрочного возврата")
+    if booking.status != BookingStatus.confirmed:
+        raise _conflict("Бронь не активна")
+    if booking.picked_up_at is None:
+        raise _conflict("Сначала получите оборудование — до выдачи используйте отмену")
+
+    now = utcnow()
+    if now >= booking.end_at:
+        raise _conflict("Аренда уже завершилась — оформите возврат через арендодателя")
+
+    effective_end = min(now, booking.end_at)
+    paid_units = calculate_units(booking.start_at, booking.end_at, booking.billing_unit)
+    used_units = calculate_units(booking.picked_up_at, effective_end, booking.billing_unit)
+    refund_units = max(0, paid_units - used_units)
+    potential_refund = (booking.unit_price * refund_units * booking.quantity).quantize(
+        Decimal("0.01")
+    )
+
+    booking.returned_at = now
+    booking.status = BookingStatus.terminated
+    booking.refund_amount = Decimal("0.00")
+    booking.penalty_amount = Decimal("0.00")
+    booking.appeal_deadline = None
+
+    from app.services import dispute_service
+
+    await db.flush()
+    await dispute_service.open_dispute(
+        db, booking, actor, reason, description, potential_refund, force=True
+    )
+
+    db.add(
+        BookingEvent(
+            booking_id=booking.id,
+            actor_id=actor.id,
+            type=EventType.returned,
+            payload={
+                "early": True,
+                "initiated_by": "client",
+                "reason": reason,
+                "description": description,
+                "potential_refund": str(potential_refund),
+            },
+        )
+    )
+    await db.commit()
+    return await get_booking(db, booking.id)  # type: ignore[return-value]
