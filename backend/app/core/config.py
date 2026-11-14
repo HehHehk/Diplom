@@ -69,6 +69,12 @@ class Settings(BaseSettings):
     smtp_tls: bool = True
     smtp_ssl: bool = False
 
+    uploads_dir: str = str(ROOT_DIR / "data" / "uploads")
+    max_image_mb: int = 2
+    max_images_per_equipment: int = 5
+    image_max_side: int = 1600
+    thumb_max_side: int = 640
+
     @property
     def cors_origin_list(self) -> list[str]:
         return [origin.strip() for origin in self.cors_origins.split(",") if origin.strip()]

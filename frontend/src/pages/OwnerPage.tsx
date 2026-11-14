@@ -6,6 +6,7 @@ import {
   Card,
   Col,
   Form,
+  Image,
   Input,
   InputNumber,
   Modal,
@@ -20,12 +21,13 @@ import {
   Tabs,
   Tag,
   Typography,
+  Upload,
 } from "antd";
-import type { TableProps } from "antd";
+import type { TableProps, UploadFile } from "antd";
 import dayjs from "dayjs";
 import { api, apiError } from "../api/client";
 import { money } from "../format";
-import type { Booking, Category, Equipment, OwnerStats, Page } from "../api/types";
+import type { Booking, Category, Equipment, EquipmentImage, OwnerStats, Page } from "../api/types";
 
 const WEEKDAYS = [
   { key: "mon", label: "Пн" },
@@ -84,6 +86,42 @@ export default function OwnerPage() {
   const [schedule, setSchedule] = useState<Record<string, DaySchedule>>(defaultSchedule);
   const [newCategory, setNewCategory] = useState("");
   const [pendingCategory, setPendingCategory] = useState<string | null>(null);
+  const [imageFiles, setImageFiles] = useState<UploadFile[]>([]);
+
+  const editingId = editing?.id ?? 0;
+  const { data: editImages } = useQuery({
+    queryKey: ["equipment-images", editingId],
+    queryFn: async () =>
+      (await api.get<EquipmentImage[]>(`/equipment/${editingId}/images`)).data,
+    enabled: editingId > 0,
+  });
+
+  const refreshImages = () => {
+    void queryClient.invalidateQueries({ queryKey: ["equipment-images", editingId] });
+    void queryClient.invalidateQueries({ queryKey: ["owner-equipment"] });
+    void queryClient.invalidateQueries({ queryKey: ["equipment", editingId] });
+  };
+  const imageSlots = (editImages?.length ?? 0) + imageFiles.length;
+
+  const removeImage = useMutation({
+    mutationFn: async (imageId: number) =>
+      api.delete(`/owner/equipment/${editingId}/images/${imageId}`),
+    onSuccess: () => {
+      message.success("Изображение удалено");
+      refreshImages();
+    },
+    onError: (error) => message.error(apiError(error)),
+  });
+
+  const makePrimary = useMutation({
+    mutationFn: async (imageId: number) =>
+      api.patch(`/owner/equipment/${editingId}/images/${imageId}/primary`),
+    onSuccess: () => {
+      message.success("Обложка обновлена");
+      refreshImages();
+    },
+    onError: (error) => message.error(apiError(error)),
+  });
 
   const { data: stats } = useQuery({
     queryKey: ["owner-stats"],
@@ -158,12 +196,25 @@ export default function OwnerPage() {
       }
       return (await api.post("/owner/equipment", payload)).data;
     },
-    onSuccess: () => {
+    onSuccess: async (saved: Equipment) => {
+      for (const item of imageFiles) {
+        const file = item.originFileObj as File | undefined;
+        if (!file) continue;
+        const formData = new FormData();
+        formData.append("file", file);
+        try {
+          await api.post(`/owner/equipment/${saved.id}/images`, formData);
+        } catch (error) {
+          message.error(apiError(error));
+        }
+      }
       message.success(editing ? "Позиция обновлена" : "Позиция создана");
       setEquipmentModal(false);
       setEditing(null);
+      setImageFiles([]);
       equipmentForm.resetFields();
       refresh();
+      void queryClient.invalidateQueries({ queryKey: ["equipment-images", saved.id] });
     },
     onError: (error) => message.error(apiError(error)),
   });
@@ -220,6 +271,7 @@ export default function OwnerPage() {
     });
     setScheduleMode("schedule");
     setSchedule(defaultSchedule());
+    setImageFiles([]);
     setEquipmentModal(true);
   };
 
@@ -245,6 +297,7 @@ export default function OwnerPage() {
       price_per_hour: item.price_per_hour ? Number(item.price_per_hour) : null,
       price_per_day: item.price_per_day ? Number(item.price_per_day) : null,
     });
+    setImageFiles([]);
     setEquipmentModal(true);
   };
 
@@ -515,6 +568,61 @@ export default function OwnerPage() {
             <Col span={24}>
               <Form.Item name="description" label="Описание">
                 <Input.TextArea rows={2} />
+              </Form.Item>
+            </Col>
+            <Col span={24}>
+              <Form.Item label={`Фотографии (${imageSlots}/5)`}>
+                <div className="image-manager">
+                  {(editImages ?? []).map((image) => (
+                    <div key={image.id} className="image-tile">
+                      <Image src={image.thumb_url} width={96} height={72} style={{ objectFit: "cover" }} />
+                      <div className="image-actions">
+                        {image.is_primary ? (
+                          <Tag color="green">обложка</Tag>
+                        ) : (
+                          <Button size="small" onClick={() => makePrimary.mutate(image.id)}>
+                            Обложка
+                          </Button>
+                        )}
+                        <Button
+                          size="small"
+                          danger
+                          onClick={() => removeImage.mutate(image.id)}
+                        >
+                          Удалить
+                        </Button>
+                      </div>
+                    </div>
+                  ))}
+                  {imageSlots < 5 ? (
+                    <Upload
+                      listType="picture-card"
+                      fileList={imageFiles}
+                      accept="image/jpeg,image/png,image/webp"
+                      beforeUpload={(file) => {
+                        if (!["image/jpeg", "image/png", "image/webp"].includes(file.type)) {
+                          message.error("Только JPEG, PNG или WebP");
+                          return Upload.LIST_IGNORE;
+                        }
+                        if (file.size > 2 * 1024 * 1024) {
+                          message.error("Файл больше 2 МБ");
+                          return Upload.LIST_IGNORE;
+                        }
+                        return false;
+                      }}
+                      onChange={({ fileList }) =>
+                        setImageFiles(
+                          fileList.slice(0, 5 - (editImages?.length ?? 0)),
+                        )
+                      }
+                    >
+                      <div>+ Фото</div>
+                    </Upload>
+                  ) : null}
+                </div>
+                <Typography.Text type="secondary">
+                  JPEG, PNG или WebP, до 2 МБ. Первое фото станет обложкой.
+                </Typography.Text>
               </Form.Item>
             </Col>
             <Col span={24}>

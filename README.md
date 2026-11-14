@@ -12,6 +12,7 @@
 | БД | PostgreSQL 17 (Docker) |
 | Frontend | React 19, TypeScript, Vite, Ant Design, TanStack Query, React Router |
 | Инфраструктура | Docker Compose, uv, Git |
+| Изображения | WebP + миниатюры в `data/uploads`, метаданные в PostgreSQL |
 
 ## Требования
 

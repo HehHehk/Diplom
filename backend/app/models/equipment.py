@@ -20,6 +20,7 @@ from app.db.base import Base
 
 if TYPE_CHECKING:
     from app.models.booking import Booking
+    from app.models.equipment_image import EquipmentImage
     from app.models.interaction import Interaction
     from app.models.user import User
 
@@ -70,6 +71,7 @@ class Equipment(Base):
 
     specs: Mapped[dict[str, Any]] = mapped_column(JSONB, default=dict, nullable=False)
     image_url: Mapped[str] = mapped_column(String(500), default="", nullable=False)
+    cover_url: Mapped[str] = mapped_column(String(500), default="", nullable=False)
     is_active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), nullable=False
@@ -81,3 +83,6 @@ class Equipment(Base):
     owner: Mapped["User | None"] = relationship(foreign_keys=[owner_id])
     bookings: Mapped[list["Booking"]] = relationship(back_populates="equipment")
     interactions: Mapped[list["Interaction"]] = relationship(back_populates="equipment")
+    images: Mapped[list["EquipmentImage"]] = relationship(
+        back_populates="equipment", cascade="all, delete-orphan"
+    )

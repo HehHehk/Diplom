@@ -1,9 +1,11 @@
 import os
+import tempfile
 
 os.environ["DATABASE_URL"] = "postgresql+asyncpg://rental:rental@localhost:5432/rental_test"
 os.environ["SECRET_KEY"] = "test-secret-key"
 os.environ["SMTP_HOST"] = ""
 os.environ["EMAIL_DEBUG_RETURN_TOKEN"] = "true"
+os.environ["UPLOADS_DIR"] = os.path.join(tempfile.gettempdir(), "rental_test_uploads")
 
 import asyncpg
 import pytest_asyncio

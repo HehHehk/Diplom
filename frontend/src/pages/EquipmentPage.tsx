@@ -24,7 +24,7 @@ import dayjs, { Dayjs } from "dayjs";
 import { api, apiError } from "../api/client";
 import { combineDateTime, durationLimits, pickBillingUnit, slotsForDate } from "../booking";
 import { money } from "../format";
-import type { Availability, BookingPreview, Equipment, Forecast } from "../api/types";
+import type { Availability, BookingPreview, Equipment, EquipmentImage, Forecast } from "../api/types";
 import EquipmentRail from "../components/EquipmentRail";
 import ForecastBlock from "../components/ForecastBlock";
 import { useAuth } from "../auth";
@@ -41,6 +41,7 @@ export default function EquipmentPage() {
   const [time, setTime] = useState<string | null>(null);
   const [amount, setAmount] = useState(1);
   const [amountUnit, setAmountUnit] = useState<"hour" | "day">("hour");
+  const [activeImage, setActiveImage] = useState(0);
 
   const { data: item, isLoading } = useQuery({
     queryKey: ["equipment", equipmentId],
@@ -53,8 +54,7 @@ export default function EquipmentPage() {
       (await api.get<Forecast>(`/equipment/${equipmentId}/load-forecast?days=90`)).data,
   });
 
-  const { data: availability } = useQuery({
-    queryKey: ["availability", equipmentId],
+  const { data: availability } = useQuery({    queryKey: ["availability", equipmentId],
     queryFn: async () => {
       const from = dayjs().toISOString();
       const to = dayjs().add(30, "day").toISOString();
@@ -65,6 +65,14 @@ export default function EquipmentPage() {
       ).data;
     },
   });
+
+  const { data: images } = useQuery({
+    queryKey: ["equipment-images", equipmentId],
+    queryFn: async () =>
+      (await api.get<EquipmentImage[]>(`/equipment/${equipmentId}/images`)).data,
+  });
+  const gallery = images ?? [];
+  const mainImage = gallery[activeImage] ?? gallery[0];
 
   useEffect(() => {
     if (!item) return;
@@ -86,7 +94,6 @@ export default function EquipmentPage() {
   const start = combineDateTime(date, time);
   const end = start ? start.add(amount, amountUnit) : null;
   const autoUnit = item ? pickBillingUnit(item, amount, amountUnit) : "hour";
-
   const { data: preview, isFetching: previewLoading } = useQuery({
     queryKey: [
       "preview",
@@ -162,7 +169,27 @@ export default function EquipmentPage() {
       <Row gutter={[24, 24]}>
         <Col xs={24} lg={14}>
           <Card>
-            <div className="detail-cover">{item.category}</div>
+            <div className="detail-cover">
+              {mainImage ? (
+                <img src={mainImage.url} alt={item.title} />
+              ) : (
+                <span>{item.category}</span>
+              )}
+            </div>
+            {gallery.length > 1 ? (
+              <div className="gallery-thumbs">
+                {gallery.map((image, index) => (
+                  <button
+                    key={image.id}
+                    type="button"
+                    className={index === activeImage ? "gallery-thumb active" : "gallery-thumb"}
+                    onClick={() => setActiveImage(index)}
+                  >
+                    <img src={image.thumb_url} alt={`${item.title} ${index + 1}`} />
+                  </button>
+                ))}
+              </div>
+            ) : null}
             <Typography.Title level={2}>{item.title}</Typography.Title>
             <Space wrap>
               <Tag color="blue">{item.brand || "без бренда"}</Tag>

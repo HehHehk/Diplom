@@ -1,12 +1,14 @@
 import asyncio
 import logging
 from contextlib import asynccontextmanager, suppress
+from pathlib import Path
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.staticfiles import StaticFiles
 from sqlalchemy import text
 
-from app.api.routes import admin, auth, bookings, categories, equipment, owner
+from app.api.routes import admin, auth, bookings, categories, equipment, images, owner
 from app.core.config import settings
 from app.db.session import SessionLocal, engine
 from app.services import booking_service, dispute_service
@@ -74,6 +76,11 @@ def create_app() -> FastAPI:
     app.include_router(admin.router)
     app.include_router(owner.router)
     app.include_router(categories.router)
+    app.include_router(images.router)
+
+    uploads = Path(settings.uploads_dir)
+    uploads.mkdir(parents=True, exist_ok=True)
+    app.mount("/media", StaticFiles(directory=uploads), name="media")
 
     @app.get("/health", tags=["system"])
     async def health() -> dict[str, str]:

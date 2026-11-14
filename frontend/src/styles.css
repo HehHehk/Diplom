@@ -145,6 +145,34 @@ body {
   margin-bottom: 16px;
 }
 
+.gallery-thumbs {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin-bottom: 16px;
+}
+
+.gallery-thumb {
+  width: 72px;
+  height: 56px;
+  padding: 0;
+  border: 2px solid transparent;
+  border-radius: 8px;
+  overflow: hidden;
+  cursor: pointer;
+  background: #f2f5fb;
+}
+
+.gallery-thumb.active {
+  border-color: #2f6fed;
+}
+
+.gallery-thumb img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
 .card-cover img,
 .detail-cover img {
   position: absolute;
@@ -253,6 +281,31 @@ body {
   width: 28px;
   color: #5b6478;
   font-weight: 600;
+}
+
+.image-manager {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  align-items: flex-start;
+}
+
+.image-tile {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  align-items: center;
+  border: 1px solid #e6eaf2;
+  border-radius: 10px;
+  padding: 6px;
+  background: #fff;
+}
+
+.image-actions {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  align-items: center;
 }
 
 @media (max-width: 768px) {

@@ -17,6 +17,7 @@ dist/
 .vite/
 
 # Data / backups
+data/
 backups/
 *.sql
 *.dump

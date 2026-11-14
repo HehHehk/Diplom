@@ -32,9 +32,20 @@ export interface Equipment {
   timezone: string;
   specs: Record<string, unknown>;
   image_url: string;
+  cover_url: string;
   is_active: boolean;
   created_at: string;
   updated_at: string;
+}
+
+export interface EquipmentImage {
+  id: number;
+  url: string;
+  thumb_url: string;
+  is_primary: boolean;
+  width: number;
+  height: number;
+  size_bytes: number;
 }
 
 export interface Page<T> {

@@ -23,8 +23,11 @@ export default function EquipmentCard({
     <Link to={`/equipment/${item.id}`} className="card-link">
       <Card hoverable className="equipment-card">
         <div className="card-cover">
-          <span>{item.category}</span>
-          {item.image_url ? <img src={item.image_url} alt={item.title} /> : null}
+          {item.cover_url ? (
+            <img src={item.cover_url} alt={item.title} loading="lazy" />
+          ) : (
+            <span>{item.category}</span>
+          )}
         </div>
         <Typography.Title level={5} className="card-title">
           {item.title}
