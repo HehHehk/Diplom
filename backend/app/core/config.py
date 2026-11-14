@@ -58,6 +58,16 @@ class Settings(BaseSettings):
     login_rate_limit_attempts: int = 10
     login_rate_limit_window_minutes: int = 5
 
+    frontend_url: str = "http://127.0.0.1:5173"
+    email_verification_ttl_hours: int = 24
+    email_debug_return_token: bool = True
+    smtp_host: str | None = None
+    smtp_port: int = 587
+    smtp_user: str | None = None
+    smtp_password: str | None = None
+    smtp_from: str = "no-reply@example.com"
+    smtp_tls: bool = True
+
     @property
     def cors_origin_list(self) -> list[str]:
         return [origin.strip() for origin in self.cors_origins.split(",") if origin.strip()]

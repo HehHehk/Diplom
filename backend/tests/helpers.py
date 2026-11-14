@@ -1,3 +1,4 @@
+from datetime import UTC, datetime
 from decimal import Decimal
 
 from httpx import AsyncClient
@@ -21,6 +22,7 @@ async def create_user(
         hashed_password=hash_password(password),
         full_name="Test User",
         role=role,
+        email_verified_at=datetime.now(UTC),
     )
     db.add(user)
     await db.commit()

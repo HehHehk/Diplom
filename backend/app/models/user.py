@@ -25,6 +25,13 @@ class User(Base):
         nullable=False,
     )
     is_active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
+    email_verified_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    verification_hash: Mapped[str | None] = mapped_column(String(64), nullable=True, index=True)
+    verification_expires_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
 
     timezone: Mapped[str] = mapped_column(String(64), default="Europe/Moscow", nullable=False)
     timezone_source: Mapped[str] = mapped_column(String(20), default="fallback", nullable=False)

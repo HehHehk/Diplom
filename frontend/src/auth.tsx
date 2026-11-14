@@ -13,7 +13,7 @@ interface AuthContextValue {
   user: User | null;
   loading: boolean;
   login: (email: string, password: string) => Promise<void>;
-  register: (data: RegisterData) => Promise<void>;
+  register: (data: RegisterData) => Promise<string | null>;
   logout: () => void;
 }
 
@@ -55,14 +55,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     setUser(me.data);
   }, []);
 
-  const register = useCallback(
-    async (payload: RegisterData) => {
-      const timezone = Intl.DateTimeFormat().resolvedOptions().timeZone;
-      await api.post("/auth/register", { ...payload, timezone });
-      await login(payload.email, payload.password);
-    },
-    [login],
-  );
+  const register = useCallback(async (payload: RegisterData) => {
+    const timezone = Intl.DateTimeFormat().resolvedOptions().timeZone;
+    const response = await api.post("/auth/register", { ...payload, timezone });
+    const debugToken = response.headers["x-debug-verification-token"];
+    return (debugToken as string | undefined) ?? null;
+  }, []);
 
   const logout = useCallback(() => {
     localStorage.removeItem("token");

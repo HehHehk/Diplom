@@ -11,6 +11,7 @@ const RegisterPage = lazy(() => import("./pages/RegisterPage"));
 const MyBookingsPage = lazy(() => import("./pages/MyBookingsPage"));
 const OwnerPage = lazy(() => import("./pages/OwnerPage"));
 const AdminPage = lazy(() => import("./pages/AdminPage"));
+const VerifyPage = lazy(() => import("./pages/VerifyPage"));
 
 function PrivateRoute({ children }: { children: React.ReactNode }) {
   const { user, loading } = useAuth();
@@ -40,6 +41,7 @@ export default function App() {
           <Route path="equipment/:id" element={<EquipmentPage />} />
           <Route path="login" element={<LoginPage />} />
           <Route path="register" element={<RegisterPage />} />
+          <Route path="verify" element={<VerifyPage />} />
           <Route
             path="my"
             element={

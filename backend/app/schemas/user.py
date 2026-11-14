@@ -52,9 +52,18 @@ class UserRead(UserBase):
     id: int
     role: UserRole
     is_active: bool
+    email_verified_at: datetime | None
     timezone: str
     timezone_source: str
     created_at: datetime
+
+
+class VerifyEmailRequest(BaseModel):
+    token: str = Field(min_length=10, max_length=256)
+
+
+class ResendVerificationRequest(BaseModel):
+    email: EmailStr
 
 
 class Token(BaseModel):

@@ -15,9 +15,14 @@ export default function RegisterPage() {
     role: "user" | "owner";
   }) => {
     try {
-      await register(values);
-      message.success("Аккаунт создан");
-      navigate("/");
+      const debugToken = await register(values);
+      if (debugToken) {
+        message.info("Подтвердите email, чтобы войти");
+        navigate(`/verify?token=${encodeURIComponent(debugToken)}`);
+      } else {
+        message.success("Письмо с подтверждением отправлено на почту");
+        navigate("/login");
+      }
     } catch (error) {
       message.error(apiError(error));
     }

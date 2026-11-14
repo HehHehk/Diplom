@@ -482,6 +482,7 @@ async def seed(reset: bool = False) -> None:
                     hashed_password=password_hash.hash(item["password"]),
                     full_name=item["full_name"],
                     role=item["role"],
+                    email_verified_at=now,
                 )
                 session.add(user)
             users.append(user)
