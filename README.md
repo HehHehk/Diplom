@@ -69,6 +69,8 @@ uv run uvicorn app.main:app --reload
 | GET | `/equipment/categories` | все | список категорий для фильтров |
 | GET | `/equipment/{id}` | все | карточка + запись просмотра в `interactions` |
 | GET | `/equipment/{id}/availability` | все | занятые интервалы для календаря |
+| GET | `/equipment/{id}/recommendations` | все | похожие позиции (content-based) |
+| GET | `/equipment/popular` | все | популярное за 30 дней |
 | POST | `/equipment` | админ | создание позиции |
 | PATCH | `/equipment/{id}` | админ / владелец | редактирование |
 | DELETE | `/equipment/{id}` | админ / владелец | мягкое удаление (скрытие из каталога) |

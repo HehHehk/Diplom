@@ -16,9 +16,11 @@ from app.schemas.equipment import (
     EquipmentCreate,
     EquipmentPage,
     EquipmentRead,
+    EquipmentRecommendation,
     EquipmentUpdate,
+    RecommendationList,
 )
-from app.services import booking_service, equipment_service
+from app.services import booking_service, equipment_service, recommender
 
 router = APIRouter(prefix="/equipment", tags=["equipment"])
 
@@ -63,6 +65,24 @@ async def list_equipment(
         limit=limit,
         offset=offset,
         pages=math.ceil(total / limit) if limit else 0,
+    )
+
+
+def _recommendation(item: Equipment, score: float) -> EquipmentRecommendation:
+    base = EquipmentRead.model_validate(item).model_dump()
+    return EquipmentRecommendation(**base, score=float(score))
+
+
+@router.get("/popular", response_model=RecommendationList)
+async def popular(
+    limit: int = Query(default=6, ge=1, le=20),
+    db: AsyncSession = Depends(get_db),
+) -> RecommendationList:
+    """Популярные позиции за 30 дней: брони и просмотры."""
+    pairs = await recommender.popular_equipment(db, limit)
+    return RecommendationList(
+        strategy="popular",
+        items=[_recommendation(item, score) for item, score in pairs],
     )
 
 
@@ -112,6 +132,24 @@ async def availability(
             )
             for b in bookings
         ],
+    )
+
+
+@router.get("/{equipment_id}/recommendations", response_model=RecommendationList)
+async def recommendations(
+    equipment_id: int,
+    limit: int = Query(default=6, ge=1, le=20),
+    db: AsyncSession = Depends(get_db),
+) -> RecommendationList:
+    """Похожие позиции. При отсутствии сходства — блок «популярное»."""
+    item = await equipment_service.get_equipment(db, equipment_id)
+    if item is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Оборудование не найдено")
+
+    strategy, pairs = await recommender.for_equipment(db, item, limit)
+    return RecommendationList(
+        strategy=strategy,
+        items=[_recommendation(entry, score) for entry, score in pairs],
     )
 
 

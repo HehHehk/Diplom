@@ -141,6 +141,15 @@ class EquipmentRead(EquipmentBase):
     updated_at: datetime
 
 
+class EquipmentRecommendation(EquipmentRead):
+    score: float = 0.0
+
+
+class RecommendationList(BaseModel):
+    strategy: str
+    items: list[EquipmentRecommendation]
+
+
 class EquipmentPage(BaseModel):
     items: list[EquipmentRead]
     total: int
