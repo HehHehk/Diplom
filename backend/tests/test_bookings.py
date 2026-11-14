@@ -42,6 +42,40 @@ async def make_booking(
 
 
 @pytest.mark.asyncio
+async def test_owner_cannot_book_own_equipment(client: AsyncClient, db_session: AsyncSession):
+    owner = await create_user(db_session, email="owner@example.com", role=UserRole.owner)
+    item = await create_equipment(db_session, owner_id=owner.id, price_per_hour="100.00")
+    token = await login(client, owner.email, "secret123")
+    owner_headers = {"Authorization": f"Bearer {token}"}
+    start, end = moment(days=2, hours=10), moment(days=2, hours=13)
+
+    response = await client.post(
+        "/bookings",
+        json=payload(item.id, start, end, billing_unit="hour"),
+        headers=owner_headers,
+    )
+    assert response.status_code == 403
+    assert "собственное" in response.json()["detail"]
+
+
+@pytest.mark.asyncio
+async def test_owner_can_book_foreign_equipment(client: AsyncClient, db_session: AsyncSession):
+    owner = await create_user(db_session, email="owner@example.com", role=UserRole.owner)
+    other = await create_user(db_session, email="other@example.com")
+    item = await create_equipment(db_session, owner_id=other.id, price_per_hour="100.00")
+    token = await login(client, owner.email, "secret123")
+    owner_headers = {"Authorization": f"Bearer {token}"}
+    start, end = moment(days=2, hours=10), moment(days=2, hours=13)
+
+    response = await client.post(
+        "/bookings",
+        json=payload(item.id, start, end, billing_unit="hour"),
+        headers=owner_headers,
+    )
+    assert response.status_code == 201, response.text
+
+
+@pytest.mark.asyncio
 async def test_create_booking_daily_price(client: AsyncClient, db_session: AsyncSession):
     headers = await auth_headers(client, db_session)
     item = await create_equipment(db_session, price_per_day="500.00")

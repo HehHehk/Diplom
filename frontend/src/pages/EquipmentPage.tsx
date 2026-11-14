@@ -152,6 +152,8 @@ export default function EquipmentPage() {
   if (isLoading) return <Spin size="large" />;
   if (!item) return <Empty description="Позиция не найдена" />;
 
+  const isOwn = Boolean(user && item.owner_id === user.id && user.role !== "admin");
+
   const limits = durationLimits(item, amountUnit);
   const bothTariffs = item.price_per_hour !== null && item.price_per_day !== null;
   const canBook = Boolean(user) && Boolean(selectedOption?.available) && Boolean(start);
@@ -240,6 +242,14 @@ export default function EquipmentPage() {
 
         <Col xs={24} lg={10}>
           <Card title="Забронировать">
+            {isOwn ? (
+              <Alert
+                type="info"
+                showIcon
+                title="Это ваша позиция"
+                description="Бронирование собственного оборудования недоступно."
+              />
+            ) : (
             <Space orientation="vertical" size="middle" style={{ width: "100%" }}>
               <div>
                 <Typography.Text type="secondary">Дата выдачи</Typography.Text>
@@ -362,6 +372,7 @@ export default function EquipmentPage() {
                 </Button>
               )}
             </Space>
+            )}
           </Card>
         </Col>
       </Row>

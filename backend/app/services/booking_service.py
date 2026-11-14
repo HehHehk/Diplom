@@ -300,6 +300,12 @@ async def create_booking(
     quantity: int,
     billing_unit: BillingUnit,
 ) -> Booking:
+    if equipment.owner_id == user.id and not user.is_admin:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Нельзя бронировать собственное оборудование",
+        )
+
     validate_period(equipment, start_at, end_at, billing_unit, quantity)
     _, unit_price, total = price_for(equipment, start_at, end_at, billing_unit, quantity)
 
