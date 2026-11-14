@@ -23,6 +23,7 @@ import {
 import type { TableProps } from "antd";
 import dayjs from "dayjs";
 import { api, apiError } from "../api/client";
+import { money } from "../format";
 import type { Booking, Equipment, OwnerStats, Page } from "../api/types";
 
 const standardHours = {
@@ -166,8 +167,8 @@ export default function OwnerPage() {
     {
       title: "Тарифы",
       render: (_, record) =>
-        `${record.price_per_hour ? `${Number(record.price_per_hour).toFixed(0)} ₽/ч` : "—"} · ${
-          record.price_per_day ? `${Number(record.price_per_day).toFixed(0)} ₽/сут` : "—"
+        `${record.price_per_hour ? `${money(record.price_per_hour)}/ч` : "—"} · ${
+          record.price_per_day ? `${money(record.price_per_day)}/сут` : "—"
         }`,
     },
     { title: "Кол-во", dataIndex: "quantity" },
@@ -214,7 +215,7 @@ export default function OwnerPage() {
     {
       title: "Сумма",
       dataIndex: "total_price",
-      render: (value: string) => `${Number(value).toFixed(0)} ₽`,
+      render: (value: string) => money(value),
     },
     {
       title: "Действия",
@@ -264,7 +265,7 @@ export default function OwnerPage() {
         </Col>
         <Col xs={12} md={6}>
           <Card>
-            <Statistic title="Выручка" value={Number(stats?.revenue ?? 0)} suffix="₽" precision={0} />
+            <Statistic title="Выручка" value={Number(stats?.revenue ?? 0)} suffix="Br" precision={0} />
           </Card>
         </Col>
         <Col xs={12} md={6}>
@@ -346,12 +347,12 @@ export default function OwnerPage() {
               </Form.Item>
             </Col>
             <Col span={12}>
-              <Form.Item name="price_per_hour" label="Цена за час, ₽">
+              <Form.Item name="price_per_hour" label="Цена за час, Br">
                 <InputNumber min={0} style={{ width: "100%" }} />
               </Form.Item>
             </Col>
             <Col span={12}>
-              <Form.Item name="price_per_day" label="Цена за сутки, ₽">
+              <Form.Item name="price_per_day" label="Цена за сутки, Br">
                 <InputNumber min={0} style={{ width: "100%" }} />
               </Form.Item>
             </Col>

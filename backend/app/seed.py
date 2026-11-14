@@ -492,14 +492,15 @@ async def seed(reset: bool = False) -> None:
         admin = next(u for u in users if u.role == UserRole.admin)
         owner = next(u for u in users if u.role == UserRole.owner)
         for index, (title, category, brand, price, quantity, specs) in enumerate(EQUIPMENT):
-            hourly = max(50, round(price / 8 / 10) * 10)
+            daily = max(5, round(price / 25 / 5) * 5)
+            hourly = max(2, round(daily / 8))
             item = Equipment(
                 owner_id=owner.id if index % 3 == 0 else admin.id,
                 title=title,
                 category=category,
                 brand=brand,
                 price_per_hour=Decimal(str(hourly)),
-                price_per_day=Decimal(str(price)),
+                price_per_day=Decimal(str(daily)),
                 min_hours=2,
                 min_days=1,
                 max_hours=24,

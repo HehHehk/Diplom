@@ -1,13 +1,14 @@
 import { Card, Tag, Typography, Space } from "antd";
 import { Link } from "react-router-dom";
 import type { Equipment } from "../api/types";
+import { money } from "../format";
 
 function priceLabel(item: Equipment): string {
   if (item.price_per_day && item.price_per_hour) {
-    return `${Number(item.price_per_hour).toFixed(0)} ₽/час · ${Number(item.price_per_day).toFixed(0)} ₽/сутки`;
+    return `${money(item.price_per_hour)}/час · ${money(item.price_per_day)}/сутки`;
   }
-  if (item.price_per_hour) return `${Number(item.price_per_hour).toFixed(0)} ₽/час`;
-  if (item.price_per_day) return `${Number(item.price_per_day).toFixed(0)} ₽/сутки`;
+  if (item.price_per_hour) return `${money(item.price_per_hour)}/час`;
+  if (item.price_per_day) return `${money(item.price_per_day)}/сутки`;
   return "цена не задана";
 }
 

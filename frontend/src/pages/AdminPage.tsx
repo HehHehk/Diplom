@@ -21,6 +21,7 @@ import {
 import type { TableProps } from "antd";
 import dayjs from "dayjs";
 import { api, apiError } from "../api/client";
+import { money } from "../format";
 import type { AdminUser, Dispute, Page } from "../api/types";
 
 const outcomeOptions = [
@@ -99,7 +100,7 @@ export default function AdminPage() {
     {
       title: "Сумма",
       dataIndex: "total_price",
-      render: (value: string) => `${Number(value).toFixed(0)} ₽`,
+      render: (value: string) => money(value),
     },
     {
       title: "Статус",
@@ -253,7 +254,7 @@ export default function AdminPage() {
               {selected.description ?? "Описание не указано"}
             </Typography.Paragraph>
             <Typography.Text>
-              Стоимость: {Number(selected.total_price).toFixed(2)} ₽
+              Стоимость: {money(selected.total_price, 2)}
             </Typography.Text>
             <Form form={form} layout="vertical" onFinish={(values) => resolve.mutate(values)}>
               <Form.Item name="outcome" label="Решение" rules={[{ required: true }]}>
@@ -261,22 +262,22 @@ export default function AdminPage() {
               </Form.Item>
               <Row gutter={12}>
                 <Col span={12}>
-                  <Form.Item name="penalty_amount" label="Штраф, ₽">
+                  <Form.Item name="penalty_amount" label="Штраф, Br">
                     <InputNumber min={0} style={{ width: "100%" }} />
                   </Form.Item>
                 </Col>
                 <Col span={12}>
-                  <Form.Item name="refund_amount" label="Возврат, ₽">
+                  <Form.Item name="refund_amount" label="Возврат, Br">
                     <InputNumber min={0} style={{ width: "100%" }} />
                   </Form.Item>
                 </Col>
                 <Col span={12}>
-                  <Form.Item name="compensation_amount" label="Компенсация, ₽">
+                  <Form.Item name="compensation_amount" label="Компенсация, Br">
                     <InputNumber min={0} style={{ width: "100%" }} />
                   </Form.Item>
                 </Col>
                 <Col span={12}>
-                  <Form.Item name="damage_amount" label="Ущерб, ₽">
+                  <Form.Item name="damage_amount" label="Ущерб, Br">
                     <InputNumber min={0} style={{ width: "100%" }} />
                   </Form.Item>
                 </Col>

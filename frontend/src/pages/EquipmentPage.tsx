@@ -21,6 +21,7 @@ import {
 } from "antd";
 import dayjs, { Dayjs } from "dayjs";
 import { api, apiError } from "../api/client";
+import { money } from "../format";
 import type {
   Availability,
   BillingUnit,
@@ -144,10 +145,10 @@ export default function EquipmentPage() {
             </Typography.Paragraph>
             <Descriptions column={2} size="small">
               <Descriptions.Item label="Часовой тариф">
-                {item.price_per_hour ? `${Number(item.price_per_hour).toFixed(0)} ₽` : "—"}
+                {item.price_per_hour ? money(item.price_per_hour) : "—"}
               </Descriptions.Item>
               <Descriptions.Item label="Суточный тариф">
-                {item.price_per_day ? `${Number(item.price_per_day).toFixed(0)} ₽` : "—"}
+                {item.price_per_day ? money(item.price_per_day) : "—"}
               </Descriptions.Item>
               <Descriptions.Item label="Минимум">
                 {item.min_hours} ч / {item.min_days} сут
@@ -213,7 +214,7 @@ export default function EquipmentPage() {
                       <Radio key={option.billing_unit} value={option.billing_unit}>
                         {option.billing_unit === "hour" ? "По часам" : "По суткам"}
                         {option.total
-                          ? ` — ${Number(option.total).toFixed(2)} ₽ (${option.units} ед.)`
+                          ? ` — ${money(option.total, 2)} (${option.units} ед.)`
                           : ""}
                         {preview.recommended === option.billing_unit ? " · выгодно" : ""}
                         {!option.available ? " · недоступно" : ""}
@@ -237,7 +238,7 @@ export default function EquipmentPage() {
 
               {selectedOption?.available ? (
                 <Typography.Title level={4} style={{ margin: 0 }}>
-                  Итого: {Number(selectedOption.total).toFixed(2)} ₽
+                  Итого: {money(selectedOption.total, 2)}
                 </Typography.Title>
               ) : null}
 

@@ -16,6 +16,7 @@ import type { TableProps } from "antd";
 import dayjs from "dayjs";
 import { Link } from "react-router-dom";
 import { api, apiError } from "../api/client";
+import { money } from "../format";
 import type { Booking, Page } from "../api/types";
 
 const statusMeta: Record<Booking["status"], { label: string; color: string }> = {
@@ -100,12 +101,12 @@ export default function MyBookingsPage() {
     {
       title: "Сумма",
       dataIndex: "total_price",
-      render: (value: string) => `${Number(value).toFixed(2)} ₽`,
+      render: (value: string) => money(value, 2),
     },
     {
       title: "Штраф / возврат",
       render: (_, record) =>
-        `${Number(record.penalty_amount).toFixed(0)} / ${Number(record.refund_amount).toFixed(0)} ₽`,
+        `${money(record.penalty_amount)} / ${money(record.refund_amount)}`,
     },
     {
       title: "Спор",
