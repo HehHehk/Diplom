@@ -217,6 +217,41 @@ body {
   min-height: 60vh;
 }
 
+.tariff-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.tariff-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 10px 12px;
+  border: 1px solid #e6eaf2;
+  border-radius: 10px;
+  color: #5b6478;
+}
+
+.tariff-row-active {
+  border-color: #2f6fed;
+  background: #f2f7ff;
+  color: #1f2a44;
+}
+
+.duration-unit {
+  display: grid;
+  place-items: center;
+  padding: 0 12px;
+  border: 1px solid #d9d9d9;
+  border-left: none;
+  border-radius: 0 8px 8px 0;
+  background: #fafafa;
+  color: #5b6478;
+  white-space: nowrap;
+}
+
 @media (max-width: 768px) {
   .app-header {
     flex-wrap: wrap;

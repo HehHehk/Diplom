@@ -12,8 +12,9 @@ import {
   Divider,
   Empty,
   InputNumber,
-  Radio,
   Row,
+  Segmented,
+  Select,
   Space,
   Spin,
   Tag,
@@ -21,19 +22,12 @@ import {
 } from "antd";
 import dayjs, { Dayjs } from "dayjs";
 import { api, apiError } from "../api/client";
+import { combineDateTime, durationLimits, pickBillingUnit, slotsForDate } from "../booking";
 import { money } from "../format";
-import type {
-  Availability,
-  BillingUnit,
-  BookingPreview,
-  Equipment,
-  Forecast,
-} from "../api/types";
+import type { Availability, BookingPreview, Equipment, Forecast } from "../api/types";
 import EquipmentRail from "../components/EquipmentRail";
 import ForecastBlock from "../components/ForecastBlock";
 import { useAuth } from "../auth";
-
-const { RangePicker } = DatePicker;
 
 export default function EquipmentPage() {
   const { id } = useParams();
@@ -43,10 +37,10 @@ export default function EquipmentPage() {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
 
-  const [range, setRange] = useState<[Dayjs, Dayjs] | null>(null);
-  const [quantity, setQuantity] = useState(1);
-  const [unit, setUnit] = useState<BillingUnit>("day");
-  const [unitTouched, setUnitTouched] = useState(false);
+  const [date, setDate] = useState<Dayjs | null>(null);
+  const [time, setTime] = useState<string | null>(null);
+  const [amount, setAmount] = useState(1);
+  const [amountUnit, setAmountUnit] = useState<"hour" | "day">("hour");
 
   const { data: item, isLoading } = useQuery({
     queryKey: ["equipment", equipmentId],
@@ -72,47 +66,71 @@ export default function EquipmentPage() {
     },
   });
 
-  const start = range?.[0];
-  const end = range?.[1];
+  useEffect(() => {
+    if (!item) return;
+    const unit = item.price_per_hour === null ? "day" : "hour";
+    setAmountUnit(unit);
+    setAmount(unit === "day" ? item.min_days : item.min_hours);
+  }, [item?.id]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const slots = useMemo(() => slotsForDate(item, date), [item, date]);
+
+  useEffect(() => {
+    if (!slots.length) {
+      setTime(null);
+      return;
+    }
+    if (!time || !slots.includes(time)) setTime(slots[0]);
+  }, [slots, time]);
+
+  const start = combineDateTime(date, time);
+  const end = start ? start.add(amount, amountUnit) : null;
+  const autoUnit = item ? pickBillingUnit(item, amount, amountUnit) : "hour";
 
   const { data: preview, isFetching: previewLoading } = useQuery({
-    queryKey: ["preview", equipmentId, start?.toISOString(), end?.toISOString(), quantity],
+    queryKey: [
+      "preview",
+      equipmentId,
+      start?.toISOString(),
+      end?.toISOString(),
+      amount,
+      amountUnit,
+    ],
     queryFn: async () =>
       (
         await api.post<BookingPreview>("/bookings/preview", {
           equipment_id: equipmentId,
           start_at: start!.toISOString(),
           end_at: end!.toISOString(),
-          quantity,
-          billing_unit: unit,
+          quantity: 1,
+          billing_unit: autoUnit,
         })
       ).data,
     enabled: Boolean(start && end),
   });
 
-  useEffect(() => {
-    setUnitTouched(false);
-  }, [start?.toISOString(), end?.toISOString()]);
+  const effectiveUnit = useMemo(() => {
+    if (!preview) return autoUnit;
+    const chosen = preview.options.find((option) => option.billing_unit === autoUnit);
+    if (chosen?.available) return autoUnit;
+    const alternative = preview.options.find((option) => option.available);
+    return alternative?.billing_unit ?? autoUnit;
+  }, [preview, autoUnit]);
 
-  useEffect(() => {
-    if (!unitTouched && preview?.recommended) setUnit(preview.recommended);
-  }, [preview?.recommended, unitTouched]);
-
-  const selectedOption = useMemo(
-    () => preview?.options.find((option) => option.billing_unit === unit),
-    [preview, unit],
+  const selectedOption = preview?.options.find(
+    (option) => option.billing_unit === effectiveUnit,
   );
 
   const createBooking = useMutation({
     mutationFn: async () => {
-      if (!start || !end) throw new Error("Выберите период");
+      if (!start || !end) throw new Error("Выберите дату и время");
       return (
         await api.post("/bookings", {
           equipment_id: equipmentId,
           start_at: start.toISOString(),
           end_at: end.toISOString(),
-          quantity,
-          billing_unit: unit,
+          quantity: 1,
+          billing_unit: effectiveUnit,
         })
       ).data;
     },
@@ -127,7 +145,15 @@ export default function EquipmentPage() {
   if (isLoading) return <Spin size="large" />;
   if (!item) return <Empty description="Позиция не найдена" />;
 
-  const canBook = Boolean(user) && Boolean(selectedOption?.available);
+  const limits = durationLimits(item, amountUnit);
+  const bothTariffs = item.price_per_hour !== null && item.price_per_day !== null;
+  const canBook = Boolean(user) && Boolean(selectedOption?.available) && Boolean(start);
+
+  const switchDurationUnit = (unit: "hour" | "day") => {
+    setAmountUnit(unit);
+    const next = durationLimits(item, unit);
+    setAmount(Math.min(Math.max(next.min, amount), next.max));
+  };
 
   return (
     <Space orientation="vertical" size="large" style={{ width: "100%" }}>
@@ -188,59 +214,100 @@ export default function EquipmentPage() {
         <Col xs={24} lg={10}>
           <Card title="Забронировать">
             <Space orientation="vertical" size="middle" style={{ width: "100%" }}>
-              <RangePicker
-                showTime={{ minuteStep: 30 }}
-                format="DD.MM.YYYY HH:mm"
-                style={{ width: "100%" }}
-                value={range}
-                onChange={(values) => setRange(values as [Dayjs, Dayjs] | null)}
-              />
-              <Space>
-                <Typography.Text>Количество</Typography.Text>
-                <InputNumber
-                  min={1}
-                  max={item.quantity}
-                  value={quantity}
-                  onChange={(value) => setQuantity(value ?? 1)}
+              <div>
+                <Typography.Text type="secondary">Дата выдачи</Typography.Text>
+                <DatePicker
+                  style={{ width: "100%" }}
+                  format="DD.MM.YYYY"
+                  value={date}
+                  disabledDate={(current) => current.isBefore(dayjs().startOf("day"))}
+                  onChange={(value) => {
+                    setDate(value);
+                    setTime(null);
+                  }}
                 />
-              </Space>
+              </div>
+
+              <div>
+                <Typography.Text type="secondary">Время выдачи</Typography.Text>
+                <Select
+                  style={{ width: "100%" }}
+                  placeholder="Сначала выберите дату"
+                  value={time}
+                  disabled={!date}
+                  onChange={setTime}
+                  options={slots.map((slot) => ({ value: slot, label: slot }))}
+                  notFoundContent="В этот день выдача не работает"
+                />
+              </div>
+
+              <div>
+                <Typography.Text type="secondary">Длительность</Typography.Text>
+                <Space.Compact style={{ width: "100%" }}>
+                  <InputNumber
+                    style={{ width: "100%" }}
+                    min={limits.min}
+                    max={limits.max}
+                    value={amount}
+                    onChange={(value) => setAmount(value ?? limits.min)}
+                  />
+                  {bothTariffs ? (
+                    <Segmented
+                      value={amountUnit}
+                      onChange={(value) => switchDurationUnit(value as "hour" | "day")}
+                      options={[
+                        { value: "hour", label: "часы" },
+                        { value: "day", label: "сутки" },
+                      ]}
+                    />
+                  ) : (
+                    <span className="duration-unit">
+                      {amountUnit === "day" ? "сутки" : "часы"}
+                    </span>
+                  )}
+                </Space.Compact>
+              </div>
+
+              {start && end ? (
+                <Typography.Text type="secondary">
+                  {start.format("DD.MM.YYYY HH:mm")} — {end.format("DD.MM.YYYY HH:mm")}
+                </Typography.Text>
+              ) : null}
+
+              {date && slots.length === 0 ? (
+                <Alert type="warning" showIcon title="В этот день выдача не работает" />
+              ) : null}
 
               {previewLoading ? <Spin /> : null}
 
               {preview ? (
-                <Radio.Group
-                  value={unit}
-                  onChange={(event) => {
-                    setUnitTouched(true);
-                    setUnit(event.target.value);
-                  }}
-                  style={{ width: "100%" }}
-                >
-                  <Space orientation="vertical" style={{ width: "100%" }}>
-                    {preview.options.map((option) => (
-                      <Radio key={option.billing_unit} value={option.billing_unit}>
-                        {option.billing_unit === "hour" ? "По часам" : "По суткам"}
-                        {option.total
-                          ? ` — ${money(option.total, 2)} (${option.units} ед.)`
-                          : ""}
-                        {preview.recommended === option.billing_unit ? " · выгодно" : ""}
-                        {!option.available ? " · недоступно" : ""}
-                      </Radio>
-                    ))}
-                  </Space>
-                </Radio.Group>
+                <div className="tariff-list">
+                  {preview.options.map((option) => (
+                    <div
+                      key={option.billing_unit}
+                      className={
+                        option.billing_unit === effectiveUnit
+                          ? "tariff-row tariff-row-active"
+                          : "tariff-row"
+                      }
+                    >
+                      <span>{option.billing_unit === "hour" ? "По часам" : "По суткам"}</span>
+                      <b>{option.total ? money(option.total, 2) : "недоступно"}</b>
+                      {option.billing_unit === effectiveUnit ? <Tag color="green">выбрано</Tag> : null}
+                    </div>
+                  ))}
+                  <Typography.Text type="secondary">
+                    Тариф выбирается автоматически по длительности аренды.
+                  </Typography.Text>
+                </div>
               ) : (
                 <Typography.Text type="secondary">
-                  Выберите период — покажем оба тарифа и стоимость.
+                  Выберите дату, время и длительность — покажем стоимость.
                 </Typography.Text>
               )}
 
               {selectedOption && selectedOption.problems.length ? (
-                <Alert
-                  type="warning"
-                  showIcon
-                  title={selectedOption.problems.join("; ")}
-                />
+                <Alert type="warning" showIcon title={selectedOption.problems.join("; ")} />
               ) : null}
 
               {selectedOption?.available ? (
