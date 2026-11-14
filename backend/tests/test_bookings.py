@@ -6,7 +6,7 @@ from httpx import AsyncClient
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.enums import DisputeStatus, UserRole
-from tests.helpers import auth_headers, create_equipment, create_user
+from tests.helpers import auth_headers, create_equipment, create_user, login
 
 
 def moment(days: int = 0, hours: int = 0, minutes: int = 0) -> datetime:
@@ -141,8 +141,14 @@ async def test_capacity_conflict(client: AsyncClient, db_session: AsyncSession):
 
     await make_booking(client, headers, item.id, start, end, billing_unit="hour")
 
+    await create_user(db_session, email="second@example.com")
+    second_token = await login(client, "second@example.com", "secret123")
+    second_headers = {"Authorization": f"Bearer {second_token}"}
+
     response = await client.post(
-        "/bookings", json=payload(item.id, start, end, billing_unit="hour"), headers=headers
+        "/bookings",
+        json=payload(item.id, start, end, billing_unit="hour"),
+        headers=second_headers,
     )
     assert response.status_code == 409
     assert response.json()["detail"]["free"] == 0
@@ -155,10 +161,24 @@ async def test_capacity_allows_second_unit(client: AsyncClient, db_session: Asyn
     start, end = moment(days=2, hours=10), moment(days=2, hours=14)
 
     await make_booking(client, headers, item.id, start, end, billing_unit="hour")
-    await make_booking(client, headers, item.id, start, end, billing_unit="hour")
 
+    await create_user(db_session, email="second@example.com")
+    second_token = await login(client, "second@example.com", "secret123")
+    second_headers = {"Authorization": f"Bearer {second_token}"}
     response = await client.post(
-        "/bookings", json=payload(item.id, start, end, billing_unit="hour"), headers=headers
+        "/bookings",
+        json=payload(item.id, start, end, billing_unit="hour"),
+        headers=second_headers,
+    )
+    assert response.status_code == 201, response.text
+
+    await create_user(db_session, email="third@example.com")
+    third_token = await login(client, "third@example.com", "secret123")
+    third_headers = {"Authorization": f"Bearer {third_token}"}
+    response = await client.post(
+        "/bookings",
+        json=payload(item.id, start, end, billing_unit="hour"),
+        headers=third_headers,
     )
     assert response.status_code == 409
 

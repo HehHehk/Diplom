@@ -2,7 +2,7 @@ from datetime import datetime
 from typing import Literal
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
-from pydantic import BaseModel, ConfigDict, EmailStr, Field, field_validator
+from pydantic import BaseModel, ConfigDict, EmailStr, Field, field_validator, model_validator
 
 from app.models.enums import UserRole
 
@@ -37,6 +37,13 @@ class UserUpdate(BaseModel):
     timezone: str | None = None
 
     _tz = field_validator("timezone")(_validate_timezone)
+
+    @model_validator(mode="after")
+    def reject_explicit_nulls(self) -> "UserUpdate":
+        for name in self.model_fields_set:
+            if getattr(self, name) is None:
+                raise ValueError(f"{name} не может быть null")
+        return self
 
 
 class UserRead(UserBase):

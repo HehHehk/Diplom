@@ -1,5 +1,4 @@
 import math
-from datetime import datetime
 from decimal import Decimal
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
@@ -26,14 +25,6 @@ from app.schemas.dispute import DisputeCreate
 from app.services import booking_service, dispute_service, equipment_service
 
 router = APIRouter(prefix="/bookings", tags=["bookings"])
-
-
-def _ensure_aware(moment: datetime) -> None:
-    if moment.tzinfo is None:
-        raise HTTPException(
-            status_code=422,
-            detail="Время должно содержать часовой пояс (ISO 8601 со смещением)",
-        )
 
 
 @router.post("/preview", response_model=BookingPreview)

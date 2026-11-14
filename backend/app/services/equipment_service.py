@@ -1,18 +1,26 @@
 from decimal import Decimal
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
+from fastapi import HTTPException, status
 from sqlalchemy import func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.config import settings
 from app.models.enums import InteractionType
 from app.models.equipment import Equipment
 from app.models.interaction import Interaction
 
 SORT_OPTIONS = {
     "newest": Equipment.created_at.desc(),
-    "price_asc": Equipment.price_per_day.asc(),
-    "price_desc": Equipment.price_per_day.desc(),
+    "price_asc": func.coalesce(Equipment.price_per_day, Equipment.price_per_hour * 24).asc(),
+    "price_desc": func.coalesce(Equipment.price_per_day, Equipment.price_per_hour * 24).desc(),
     "title": Equipment.title.asc(),
 }
+
+
+def effective_daily_price():
+    """Для фильтров: суточная цена, для часовых позиций — 24 часовых."""
+    return func.coalesce(Equipment.price_per_day, Equipment.price_per_hour * 24)
 
 
 async def list_equipment(
@@ -47,9 +55,9 @@ async def list_equipment(
     if brand:
         filters.append(Equipment.brand == brand)
     if min_price is not None:
-        filters.append(Equipment.price_per_day >= min_price)
+        filters.append(effective_daily_price() >= min_price)
     if max_price is not None:
-        filters.append(Equipment.price_per_day <= max_price)
+        filters.append(effective_daily_price() <= max_price)
     if owner_id is not None:
         filters.append(Equipment.owner_id == owner_id)
 
@@ -95,3 +103,28 @@ async def log_view(db: AsyncSession, equipment_id: int, user_id: int | None) -> 
         )
     )
     await db.commit()
+
+
+def validate_state(item: Equipment) -> None:
+    """Проверяет итоговое состояние позиции после частичного редактирования."""
+
+    def fail(detail: str) -> None:
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_CONTENT, detail=detail)
+
+    if item.price_per_hour is None and item.price_per_day is None:
+        fail("Нужна хотя бы одна цена: за час или за сутки")
+    if item.min_hours > item.max_hours:
+        fail("max_hours должен быть не меньше min_hours")
+    if item.min_days > item.max_days:
+        fail("max_days должен быть не меньше min_days")
+    if item.max_hours > settings.max_rental_days * 24:
+        fail(f"max_hours не может превышать {settings.max_rental_days * 24} ч")
+    if item.max_days > settings.max_rental_days:
+        fail(f"max_days не может превышать {settings.max_rental_days} сут")
+    try:
+        ZoneInfo(item.timezone)
+    except (ZoneInfoNotFoundError, ValueError) as exc:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
+            detail="Неизвестный часовой пояс",
+        ) from exc

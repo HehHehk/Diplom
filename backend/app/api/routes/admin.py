@@ -216,7 +216,7 @@ async def stats(
     revenue = (
         await db.scalar(
             select(func.coalesce(func.sum(Booking.total_price), 0)).where(
-                Booking.status == BookingStatus.completed
+                Booking.status.in_([BookingStatus.completed, BookingStatus.terminated])
             )
         )
         or 0

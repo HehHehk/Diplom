@@ -1,9 +1,9 @@
 import math
-from datetime import datetime
 from decimal import Decimal
 from typing import Literal
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
+from pydantic import AwareDatetime
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.deps import get_current_admin, get_current_user, get_optional_user
@@ -82,8 +82,8 @@ async def get_equipment(
 @router.get("/{equipment_id}/availability", response_model=AvailabilityResponse)
 async def availability(
     equipment_id: int,
-    from_at: datetime = Query(alias="from"),
-    to_at: datetime = Query(alias="to"),
+    from_at: AwareDatetime = Query(alias="from"),
+    to_at: AwareDatetime = Query(alias="to"),
     db: AsyncSession = Depends(get_db),
 ) -> AvailabilityResponse:
     """Занятые интервалы оборудования за период — для календаря бронирования."""
@@ -117,6 +117,7 @@ async def create_equipment(
     payload = data.model_dump()
     owner_id = payload.pop("owner_id") or admin.id
     item = Equipment(**payload, owner_id=owner_id)
+    equipment_service.validate_state(item)
     db.add(item)
     await db.commit()
     await db.refresh(item)
@@ -145,8 +146,7 @@ async def update_equipment(
     for field, value in changes.items():
         setattr(item, field, value)
 
-    if item.price_per_hour is None and item.price_per_day is None:
-        raise HTTPException(status_code=422, detail="Нужна хотя бы одна цена")
+    equipment_service.validate_state(item)
 
     await db.commit()
     await db.refresh(item)

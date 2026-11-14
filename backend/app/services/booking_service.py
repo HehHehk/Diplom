@@ -236,6 +236,48 @@ async def check_capacity(
         )
 
 
+async def check_user_limits(
+    db: AsyncSession,
+    user: User,
+    equipment: Equipment,
+    start_at: datetime,
+    end_at: datetime,
+) -> None:
+    """Лимит активных броней и запрет собственных пересечений на одну позицию."""
+    now = utcnow()
+    active = await db.scalar(
+        select(func.count())
+        .select_from(Booking)
+        .where(
+            Booking.user_id == user.id,
+            Booking.status == BookingStatus.confirmed,
+            Booking.end_at > now,
+        )
+    )
+    if int(active or 0) >= settings.max_active_bookings_per_user:
+        raise _conflict(
+            "Достигнут лимит активных броней",
+            {"limit": settings.max_active_bookings_per_user},
+        )
+
+    duplicate = await db.scalar(
+        select(Booking.id)
+        .where(
+            Booking.user_id == user.id,
+            Booking.equipment_id == equipment.id,
+            Booking.status == BookingStatus.confirmed,
+            effective_start() < end_at,
+            Booking.end_at > start_at,
+        )
+        .limit(1)
+    )
+    if duplicate is not None:
+        raise _conflict(
+            "У вас уже есть активная бронь этой позиции на пересекающийся период",
+            {"booking_id": duplicate},
+        )
+
+
 # --- Создание, выдача и возврат ------------------------------------------
 
 
@@ -263,6 +305,7 @@ async def create_booking(
 
     await lock_equipment(db, equipment.id)
     await check_capacity(db, equipment, start_at, end_at, quantity)
+    await check_user_limits(db, user, equipment, start_at, end_at)
 
     booking = Booking(
         user_id=user.id,
@@ -377,7 +420,7 @@ async def cancel_booking(
             client = await db.get(User, booking.user_id)
             if client is not None:
                 client.penalties_count += 1
-        if cancelled_by == CancelledBy.owner and not technical:
+        if cancelled_by == CancelledBy.owner and not technical and reason != "force_majeure":
             actor.cancellations_count += 1
 
     db.add(
@@ -585,15 +628,34 @@ async def revoke_no_show(db: AsyncSession, booking: Booking, actor: User) -> Boo
         raise _conflict("Бронь не в статусе неявки")
     if booking.no_show_at is None or now > booking.no_show_at + timedelta(hours=1):
         raise _conflict("Срок снятия неявки истёк")
+    if now >= booking.end_at:
+        raise _conflict("Срок аренды истёк — снимать неявку поздно")
+
+    equipment = booking.equipment
+    booked = await booked_quantity(
+        db,
+        equipment.id,
+        max(now, booking.start_at),
+        booking.end_at,
+        equipment.buffer_minutes,
+        exclude_booking_id=booking.id,
+    )
+    if booked + booking.quantity > equipment.quantity:
+        raise _conflict(
+            "Слот уже занят другой бронью — снять неявку нельзя",
+            {"free": max(0, equipment.quantity - booked)},
+        )
 
     booking.status = BookingStatus.confirmed
     booking.no_show_cancelled_at = now
     booking.no_show_at = None
+    booking.no_show_deadline = None
     booking.cancelled_at = None
     booking.cancelled_by = None
     booking.cancellation_reason = None
     booking.penalty_amount = Decimal("0.00")
     booking.refund_amount = Decimal("0.00")
+    booking.appeal_deadline = None
 
     client = await db.get(User, booking.user_id)
     if client is not None and client.penalties_count > 0:

@@ -100,11 +100,22 @@ async def open_dispute(
 
     premoderated = is_premoderated(actor)
 
+    # Замораживаем суммы до решения: снимаем уже начисленный штраф из счётчика,
+    # чтобы при отклонении спора не посчитать его дважды.
+    if booking.penalty_amount > 0:
+        client = await db.get(User, booking.user_id)
+        if client is not None and client.penalties_count > 0:
+            client.penalties_count -= 1
+
     booking.dispute_status = DisputeStatus.pending
     booking.dispute_reason = reason
     booking.dispute_description = text
     booking.dispute_created_at = now
     booking.dispute_premoderated = premoderated
+    booking.penalty_amount = Decimal("0.00")
+    booking.compensation_amount = Decimal("0.00")
+    booking.refund_amount = Decimal("0.00")
+    booking.appeal_deadline = None
 
     actor.disputes_open += 1
     actor.disputes_total_30d += 1
@@ -171,6 +182,15 @@ async def resolve_dispute(
     booking.refund_amount = refund if refund is not None else default_refund
     booking.compensation_amount = compensation if compensation is not None else default_compensation
     booking.damage_amount = damage if damage is not None else booking.damage_amount
+
+    total = booking.total_price
+    if booking.penalty_amount + booking.refund_amount > total:
+        raise _bad("Штраф и возврат в сумме не могут превышать стоимость брони")
+    if booking.compensation_amount > total:
+        raise _bad("Компенсация не может превышать стоимость брони")
+    if booking.damage_amount < 0:
+        raise _bad("Сумма ущерба не может быть отрицательной")
+
     booking.resolution_outcome = outcome
     booking.dispute_status = DisputeStatus.resolved
     booking.resolved_by = admin.id if admin else None
@@ -231,6 +251,7 @@ async def apply_dispute_sla(db: AsyncSession) -> int:
             Booking.dispute_created_at.is_not(None),
             Booking.dispute_created_at <= deadline,
             Booking.dispute_premoderated.is_(False),
+            Booking.dispute_reason != "returned_damaged",
         )
         .options(
             selectinload(Booking.user),

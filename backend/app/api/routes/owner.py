@@ -1,9 +1,9 @@
 import math
-from datetime import datetime
 from decimal import Decimal
 from typing import Literal
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
+from pydantic import AwareDatetime
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
@@ -67,6 +67,7 @@ async def create_my_equipment(
     payload = data.model_dump()
     owner_id = payload.pop("owner_id")
     item = Equipment(**payload, owner_id=owner_id if user.is_admin and owner_id else user.id)
+    equipment_service.validate_state(item)
     db.add(item)
     await db.commit()
     await db.refresh(item)
@@ -92,10 +93,7 @@ async def update_my_equipment(
     for field, value in changes.items():
         setattr(item, field, value)
 
-    if item.price_per_hour is None and item.price_per_day is None:
-        raise HTTPException(status_code=422, detail="Нужна хотя бы одна цена")
-    if item.min_hours > item.max_hours or item.min_days > item.max_days:
-        raise HTTPException(status_code=422, detail="Минимальная длительность больше максимальной")
+    equipment_service.validate_state(item)
 
     await db.commit()
     await db.refresh(item)
@@ -137,8 +135,8 @@ async def my_bookings(
     status_filter: Literal[
         "confirmed", "completed", "cancelled", "terminated", "no_show", "all"
     ] = Query(default="all", alias="status"),
-    from_at: datetime | None = Query(default=None),
-    to_at: datetime | None = Query(default=None),
+    from_at: AwareDatetime | None = Query(default=None),
+    to_at: AwareDatetime | None = Query(default=None),
     limit: int = Query(default=20, ge=1, le=100),
     offset: int = Query(default=0, ge=0),
     db: AsyncSession = Depends(get_db),
@@ -212,11 +210,17 @@ async def stats(
     disputes_pending = await db.scalar(
         booking_count(Booking.dispute_status == DisputeStatus.pending)
     )
-    revenue = await db.scalar(
-        select(func.coalesce(func.sum(Booking.total_price), 0))
-        .select_from(Booking)
-        .join(Equipment, Booking.equipment_id == Equipment.id)
-        .where(*owner_filter, Booking.status == BookingStatus.completed)
+    revenue = (
+        await db.scalar(
+            select(func.coalesce(func.sum(Booking.total_price), 0))
+            .select_from(Booking)
+            .join(Equipment, Booking.equipment_id == Equipment.id)
+            .where(
+                *owner_filter,
+                Booking.status.in_([BookingStatus.completed, BookingStatus.terminated]),
+            )
+        )
+        or 0
     )
     refunds = await db.scalar(
         select(func.coalesce(func.sum(Booking.refund_amount), 0))

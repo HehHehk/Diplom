@@ -2,7 +2,7 @@ from datetime import datetime
 from decimal import Decimal
 from typing import Literal
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from app.models.enums import UserRole
 
@@ -48,6 +48,13 @@ class AdminUserUpdate(BaseModel):
     is_abuser: bool | None = None
     moderation_mode: Literal["normal", "premoderation"] | None = None
     full_name: str | None = Field(default=None, max_length=255)
+
+    @model_validator(mode="after")
+    def reject_explicit_nulls(self) -> "AdminUserUpdate":
+        for name in self.model_fields_set:
+            if getattr(self, name) is None:
+                raise ValueError(f"{name} не может быть null")
+        return self
 
 
 class AdminUserPage(BaseModel):

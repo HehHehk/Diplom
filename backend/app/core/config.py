@@ -3,14 +3,14 @@ from pathlib import Path
 
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
-ROOT_DIR = Path(__file__).resolve().parents[2]
+ROOT_DIR = Path(__file__).resolve().parents[3]
 
 
 class Settings(BaseSettings):
     """Application settings loaded from the repo-root .env file."""
 
     model_config = SettingsConfigDict(
-        env_file=(ROOT_DIR / ".env", ROOT_DIR / ".env.example"),
+        env_file=(ROOT_DIR / ".env.example", ROOT_DIR / ".env"),
         env_file_encoding="utf-8",
         extra="ignore",
     )
@@ -26,6 +26,7 @@ class Settings(BaseSettings):
 
     booking_buffer_minutes: int = 30
     cors_origins: str = "http://localhost:5173"
+    max_active_bookings_per_user: int = 10
 
     seed_random: int = 42
 
