@@ -9,7 +9,7 @@
 |---|---|
 | Backend | Python 3.13, FastAPI, SQLAlchemy 2 (async), asyncpg, Alembic, Pydantic v2 |
 | БД | PostgreSQL 17 (Docker) |
-| Frontend | React 19, TypeScript, Vite, Ant Design, TanStack Query *(в разработке)* |
+| Frontend | React 19, TypeScript, Vite, Ant Design, TanStack Query, React Router |
 | Инфраструктура | Docker Compose, uv, Git |
 
 ## Требования
@@ -48,6 +48,16 @@ uv run uvicorn app.main:app --reload
 
 - Swagger UI: http://127.0.0.1:8000/docs
 - Проверка: http://127.0.0.1:8000/health
+
+Frontend:
+
+```bash
+cd frontend
+npm install
+npm run dev
+```
+
+Приложение: http://127.0.0.1:5173 (Vite проксирует `/api` на backend).
 
 ### Демо-аккаунты
 
